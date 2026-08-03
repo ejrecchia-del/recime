@@ -71,6 +71,18 @@ export default function renderSettings() {
       <button class="btn block ghost small" data-a="install">How do I install this on my phone?</button>
     </div>`));
 
+  // --- where you are --------------------------------------------------------
+  const loc = s.location || {};
+  root.appendChild(section('Where you shop', `
+    <div class="card pad stack">
+      <div class="row-between">
+        <div><div style="font-weight:650">${esc([loc.town, loc.state].filter(Boolean).join(', ') || 'Not set')}</div>
+          <div class="tiny dim">${esc(loc.postcode || '')} · used to pick stores and label price estimates</div></div>
+        <button class="btn sm" data-a="setloc">Change</button>
+      </div>
+      <div class="tiny dim">Prices in this app are researched for ${esc(PRICE_META.region)}. Anywhere else, treat them as a guide until you correct a few — corrections stick.</div>
+    </div>`));
+
   // --- stores --------------------------------------------------------------
   root.appendChild(section('Stores', `
     <div class="card">
@@ -340,6 +352,31 @@ function wire(root) {
       for (const k of await caches.keys()) await caches.delete(k);
     } catch (e) { /* reload regardless */ }
     setTimeout(() => location.reload(), 400);
+  });
+
+  on(root, 'click', '[data-a="setloc"]', () => {
+    const l = store.settings.location || {};
+    sheet('Where you shop', `<div class="pad stack">
+      <p class="small muted" style="margin:0">A town and postcode, not GPS — it keeps working when you're away from home and doesn't ask for a permission you'd rather not give.</p>
+      <div class="row" style="gap:9px">
+        <div class="field grow"><label>Town</label><input class="input" id="l-town" value="${esc(l.town || '')}"></div>
+        <div class="field" style="max-width:90px"><label>State</label><input class="input" id="l-state" value="${esc(l.state || '')}"></div>
+      </div>
+      <div class="field"><label>Postcode</label><input class="input" id="l-zip" value="${esc(l.postcode || '')}" inputmode="numeric"></div>
+      <button class="btn primary block" data-a="save">Save</button>
+    </div>`, {
+      onMount(r2, close2) {
+        on(r2, 'click', '[data-a="save"]', () => {
+          store.setSetting('location', {
+            town: $('#l-town', r2).value.trim(),
+            state: $('#l-state', r2).value.trim().toUpperCase(),
+            postcode: $('#l-zip', r2).value.trim(),
+            country: 'US',
+          });
+          close2(); toast('Saved', 'ok'); nav.render();
+        });
+      },
+    });
   });
 
   on(root, 'click', '[data-a="export"]', () => {
