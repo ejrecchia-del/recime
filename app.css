@@ -125,7 +125,7 @@ a { color: var(--accent-2); }
 /* --- Bottom navigation --------------------------------------------------- */
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   background: color-mix(in srgb, var(--bg-2) 94%, transparent);
   backdrop-filter: saturate(160%) blur(16px);
   -webkit-backdrop-filter: saturate(160%) blur(16px);
@@ -135,10 +135,10 @@ a { color: var(--accent-2); }
 .nav button {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px; height: var(--nav-h); color: var(--text-3);
-  font-size: 10.5px; font-weight: 600; letter-spacing: .1px;
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0;
   position: relative; transition: color .15s;
 }
-.nav button .ic { font-size: 21px; line-height: 1; }
+.nav button .ic { font-size: 19px; line-height: 1; }
 .nav button.on { color: var(--accent-2); }
 .nav button.on .ic {
   transform: translateY(-1px) scale(1.06);
