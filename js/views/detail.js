@@ -157,7 +157,9 @@ export default function renderDetail(r) {
   // --- steps ---------------------------------------------------------------
   if ((r.steps || []).length) {
     root.appendChild(el(`<div class="pad" style="padding-top:4px">
-      <div class="sechead" style="padding:0 0 4px">Method<span class="line"></span></div>
+      <div class="sechead" style="padding:0 0 4px">Method<span class="line"></span>
+        ${(r.steps || []).some((x) => String(x).length > 220) ? '<button class="btn xs ghost" data-a="splitsteps">Split into steps</button>' : ''}
+      </div>
       ${r.steps.map((s, i) => `<div class="steprow"><div class="n">${i + 1}</div><div class="t">${esc(s)}</div></div>`).join('')}
       <button class="btn primary block" style="margin-top:14px" data-a="cook">▶ Start cooking</button>
     </div>`));
@@ -203,6 +205,15 @@ export default function renderDetail(r) {
   on(root, 'click', '[data-a="healthify"]', () => doHealthify(r));
   on(root, 'click', '[data-a="more"]', () => openMore(r));
   on(root, 'click', '[data-a="photo"]', () => pickPhoto(r));
+  on(root, 'click', '[data-a="splitsteps"]', async () => {
+    const { explodeStep } = await import('../parse.js');
+    const next = (r.steps || []).flatMap(explodeStep);
+    if (next.length === (r.steps || []).length) { toast('Nothing to split', 'err'); return; }
+    store.updateRecipe(r.id, { steps: next });
+    toast(`Split into ${next.length} steps`, 'ok');
+    nav.render();
+  });
+
   on(root, 'click', '[data-a="findphoto"]', async () => {
     toast('Looking for a photo…');
     const { findPhotos } = await import('../parse.js');
