@@ -1,5 +1,5 @@
 // ReciMe service worker — offline-first for the app shell, network-first for data
-const CACHE = 'recime-20260803-0430';
+const CACHE = 'recime-20260803-0530';
 const SHELL = [
   './', './index.html', './app.css', './app.webmanifest',
   './js/app.js', './js/store.js', './js/ui.js', './js/util.js',

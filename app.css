@@ -132,26 +132,39 @@ a { color: var(--accent-2); }
   border-top: 1px solid var(--line);
   padding-bottom: var(--safe-b);
 }
+/* Six tabs on a phone is tight, so the active one gets a pill rather than a
+   bar, the icons carry the weight, and the labels stay out of the way. */
 .nav button {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; height: var(--nav-h); color: var(--text-3);
-  font-size: 9.5px; font-weight: 600; letter-spacing: 0;
-  position: relative; transition: color .15s;
+  gap: 2px; height: var(--nav-h); color: var(--text-3);
+  font-size: 9.5px; font-weight: 600; letter-spacing: -.1px;
+  position: relative; transition: color .18s ease;
+  padding: 0 2px;
 }
-.nav button .ic { font-size: 19px; line-height: 1; }
-.nav button.on { color: var(--accent-2); }
+.nav button .ic {
+  font-size: 20px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  width: 42px; height: 27px; border-radius: 14px;
+  transition: transform .24s var(--ease-spring), background .22s ease, box-shadow .22s ease;
+}
+.nav button.on { color: var(--accent-2); font-weight: 700; }
 .nav button.on .ic {
-  transform: translateY(-1px) scale(1.06);
-  filter: drop-shadow(0 3px 7px color-mix(in srgb, var(--accent) 55%, transparent));
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
 }
-.nav button .ic { transition: transform .22s var(--ease-spring), filter .22s ease; }
-.nav button.on::after {
-  content: ''; position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
-  width: 22px; height: 3px; border-radius: 2px; background: var(--accent-2);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 70%, transparent);
+.nav button:active .ic { transform: scale(.9); }
+@media (hover: hover) {
+  .nav button:hover { color: var(--text-2); }
+  .nav button.on:hover { color: var(--accent-2); }
+}
+/* Narrow phones: drop the labels and let the icons breathe. */
+@media (max-width: 380px) {
+  .nav button { font-size: 0; gap: 0; }
+  .nav button .ic { font-size: 22px; height: 34px; width: 46px; border-radius: 17px; }
 }
 .nav .badge {
-  position: absolute; top: 7px; right: 50%; margin-right: -22px;
+  position: absolute; top: 5px; right: 50%; margin-right: -20px;
   background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
   min-width: 17px; height: 17px; border-radius: 9px; padding: 0 4px;
   display: flex; align-items: center; justify-content: center;
@@ -681,3 +694,25 @@ select.input { background-image: linear-gradient(45deg, transparent 50%, var(--t
   body { background: #fff; color: #000; }
   .screen { padding: 0; overflow: visible; }
 }
+
+/* --- Update prompt -------------------------------------------------------- */
+.updatebar {
+  position: fixed; left: 12px; right: 12px;
+  bottom: calc(var(--nav-h) + var(--safe-b) + 12px); z-index: 120;
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 12px 11px 15px; border-radius: 14px;
+  background: linear-gradient(180deg, var(--bg-4), var(--bg-3));
+  border: 1px solid var(--line-2);
+  box-shadow: 0 10px 30px rgba(0,0,0,.45);
+  font-size: 13.5px; font-weight: 600;
+  animation: up .24s cubic-bezier(.2,.9,.3,1);
+}
+
+/* --- Photo picker in the recipe editor ------------------------------------ */
+.photopick {
+  height: 130px; border-radius: var(--radius-sm); overflow: hidden;
+  background: var(--bg-3); border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 1px 3px var(--sink);
+}
+.photopick img { width: 100%; height: 100%; object-fit: cover; display: block; }
