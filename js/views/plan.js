@@ -2,10 +2,11 @@
 // views/plan.js — the suggested week: approve it, reroll it, or swap it yourself
 // ---------------------------------------------------------------------------
 import store from '../store.js';
-import { el, on, artHtml, artStyle, toast, sheet, confirmSheet, emptyState, $, thumbUrl } from '../ui.js';
+import { el, on, artHtml, artStyle, toast, sheet, confirmSheet, emptyState, copyText, $, thumbUrl } from '../ui.js';
 import { esc, ymd, weekStartOf, addDays, parseYmd, prettyDate, DAY_SHORT, fmtMinutes, totalMinutes, recipeArt } from '../util.js';
 import { generatePlan, reroll, planSummary, slotDateLabel, skipSlot, unskipSlot, skipDay, unskipDay, SKIP_REASONS, skipReasonOf } from '../planner.js';
 import { buildListFromPlan } from './shop.js';
+import { planWine, wineListItems, wineHandoffPayload, caseMath, CASE_TIERS } from '../wine.js';
 
 let viewWeek = null;
 
@@ -100,6 +101,32 @@ export default function renderPlan() {
     </div>`));
   }
 
+  // --- wine ----------------------------------------------------------------
+  if (store.settings.wineEnabled !== false) {
+    const entries = plan.slots
+      .filter((sl) => sl.recipeId && !sl.skipped)
+      .map((sl) => ({ recipe: store.recipe(sl.recipeId), day: slotDateLabel(sl) }))
+      .filter((e) => e.recipe);
+    if (entries.length >= 2) {
+      const wp = planWine(entries, {
+        bottles: store.settings.wineBottles || 12,
+        targetPerBottle: store.settings.wineTargetPerBottle || 12,
+      });
+      const cols = Object.entries(wp.colours)
+        .map(([c, n]) => `${n} ${c === 'rose' ? 'rosé' : c}`).join(' · ');
+      root.appendChild(el(`<div class="pad" style="padding-top:2px">
+        <div class="sechead" style="padding:0 0 7px">Wine for this week<span class="line"></span></div>
+        <div class="card pad" style="margin:0" data-a="wine" style="cursor:pointer">
+          <div class="row-between">
+            <div><div style="font-weight:700">🍷 ${wp.bottles} bottles — ${esc(cols)}</div>
+              <div class="tiny dim">${esc(wp.tier.label)} · about $${wp.math.net.toFixed(0)} after the discount</div></div>
+            <span class="dim">›</span>
+          </div>
+        </div>
+      </div>`));
+    }
+  }
+
   // --- actions -------------------------------------------------------------
   root.appendChild(el(`<div class="pad stack">
     ${plan.status === 'approved'
@@ -175,6 +202,7 @@ function wire(root, weekKey, plan) {
   });
 
   on(root, 'click', '[data-a="list"]', () => buildListFromPlan(weekKey, { navigate: true }));
+  on(root, 'click', '[data-a="wine"]', () => openWine(weekKey));
 
   on(root, 'click', '[data-a="clear"]', async () => {
     if (await confirmSheet('Clear this week?', 'The plan will be emptied. Your recipes are untouched.', { danger: true, okLabel: 'Clear' })) {
@@ -182,6 +210,119 @@ function wire(root, weekKey, plan) {
       store.commit('plan', weekKey, 'plan:clear');
     }
   });
+}
+
+/**
+ * The wine run. Styles first (that's the useful bit), then the case maths,
+ * then a hand-off if you want real bottles found for you.
+ */
+export function openWine(weekKey) {
+  const plan = store.plan(weekKey);
+  if (!plan) return;
+  const entries = plan.slots
+    .filter((sl) => sl.recipeId && !sl.skipped)
+    .map((sl) => ({ recipe: store.recipe(sl.recipeId), day: slotDateLabel(sl) }))
+    .filter((e) => e.recipe);
+
+  let bottles = store.settings.wineBottles || 12;
+  let target = store.settings.wineTargetPerBottle || 12;
+
+  const draw = () => {
+    const wp = planWine(entries, { bottles, targetPerBottle: target });
+    const m = wp.math;
+    return `<div class="pad stack">
+      <div class="field"><label>How many bottles?</label>
+        <div class="segment" id="wb">
+          ${[6, 12, 18].map((n) => `<button data-b="${n}" class="${bottles === n ? 'on' : ''}">${n}</button>`).join('')}
+        </div>
+        <div class="tiny dim">${esc(wp.tier.label)} — ${esc(wp.tier.note)}</div></div>
+
+      <div class="banner good" style="margin:0">
+        <b>$${wp.shelfCeiling.toFixed(2)} is your shelf ceiling.</b>
+        With ${Math.round(wp.tier.discount * 100)}% off, a bottle at that price costs you
+        $${target.toFixed(2)} — so you can reach past your usual $${target} tag and still hit it.
+        ${m.nextTier ? `<div style="margin-top:6px">📌 ${m.nextTier.need} more bottle${m.nextTier.need === 1 ? '' : 's'} and the discount goes from ${Math.round(wp.tier.discount * 100)}% to ${Math.round(m.nextTier.discount * 100)}%.</div>` : ''}
+      </div>
+
+      <div>
+        <div class="small muted" style="margin-bottom:7px">What to buy</div>
+        <div class="card">
+          ${wp.buy.map((b) => `<div class="lrow">
+            <div class="thumb" style="background:var(--bg-3);font-size:17px">${b.style.colour === 'white' ? '🥂' : b.style.colour === 'rose' ? '🌸' : b.style.colour === 'sparkling' ? '🍾' : b.style.colour === 'sweet' ? '🍯' : '🍷'}</div>
+            <div class="grow" style="min-width:0">
+              <div style="font-weight:650">${b.bottles} × ${esc(b.style.name)}</div>
+              <div class="tiny dim">${esc(b.style.notes)} · ${esc(b.style.abv)}</div>
+              <div class="tiny" style="color:var(--accent-2)">Look for: ${esc(b.style.look)}</div>
+            </div></div>`).join('')}
+        </div>
+      </div>
+
+      <div>
+        <div class="small muted" style="margin-bottom:7px">Which night</div>
+        <div class="card">
+          ${wp.perNight.map((n) => `<div class="lrow">
+            <div class="grow" style="min-width:0">
+              <div style="font-weight:600" class="truncate">${esc(n.day || '')} — ${esc(n.recipe.title)}</div>
+              <div class="tiny dim">${n.pairing.picks.map((x) => esc(x.style.name)).join(' · ')}</div>
+              <div class="tiny dim" style="opacity:.75">${esc((n.pairing.picks[0] || {}).why || '')}</div>
+            </div></div>`).join('')}
+        </div>
+      </div>
+
+      <div class="kv"><span class="k">On the shelf</span><span class="v">$${m.gross.toFixed(2)}</span></div>
+      <div class="kv"><span class="k">${Math.round(wp.tier.discount * 100)}% case discount</span><span class="v" style="color:var(--accent-2)">−$${m.saved.toFixed(2)}</span></div>
+      <div class="kv"><span class="k"><b>What you pay</b></span><span class="v"><b>$${m.net.toFixed(2)}</b> · $${m.perBottle.toFixed(2)}/bottle</span></div>
+
+      <button class="btn primary block" data-a="tolist">🛒 Add the wine run to my list</button>
+      <button class="btn block" data-a="handoff">🤖 Have Claude find the actual bottles</button>
+      <p class="tiny dim" style="margin:0">The discount is in-person only, so this is routed as a trip to
+        ${esc((store.settings.stores.find((x) => x.id === store.settings.wineStore) || {}).name || 'the wine shop')} rather than a delivery.</p>
+    </div>`;
+  };
+
+  const sh = sheet('🍷 Wine for this week', draw(), {
+    onMount(root, close) {
+      const rerender = () => { root.querySelector('.sheet-body').innerHTML = draw(); };
+      on(root, 'click', '#wb button', (e, t) => {
+        bottles = Number(t.dataset.b);
+        store.setSetting('wineBottles', bottles);
+        rerender();
+      });
+      on(root, 'click', '[data-a="tolist"]', () => {
+        const wp = planWine(entries, { bottles, targetPerBottle: target });
+        for (const it of wineListItems(wp, store.settings.wineStore)) store.putShoppingItem(it);
+        close();
+        toast(`${wp.bottles} bottles added to the list`, 'ok');
+        window.__recimeNav.go('shop', { top: true });
+      });
+      on(root, 'click', '[data-a="handoff"]', () => {
+        const wp = planWine(entries, { bottles, targetPerBottle: target });
+        const payload = wineHandoffPayload(wp, store.settings);
+        const text = [
+          'Find me wine for this week.',
+          '',
+          `Budget: $${payload.budget.targetPerBottleAfterDiscount} a bottle AFTER the case discount.`,
+          `Shelf ceiling: $${payload.budget.shelfCeiling} (${payload.budget.caseTier.label}).`,
+          payload.budget.note,
+          '',
+          'Styles and counts:',
+          ...payload.buy.map((b) => `  ${b.bottles} × ${b.style} — ${b.lookFor} (${b.tastesLike})`),
+          '',
+          'Meals they need to go with:',
+          ...payload.forMeals.map((f) => `  ${f.day} ${f.meal} → ${f.styles.join(', ')}`),
+          '',
+          'For each bottle I want: producer, vintage, region, shelf price, ABV, one line on how it tastes,',
+          'and which night it is for. Stay at or under the shelf ceiling. Flag anything on a deeper',
+          'promotion worth breaking the pattern for.',
+          '',
+          JSON.stringify(payload, null, 2),
+        ].join('\n');
+        copyText(text);
+        toast('Copied — paste it to Claude', 'ok');
+      });
+    },
+  });
+  return sh;
 }
 
 function askBuildList(weekKey) {
