@@ -716,3 +716,10 @@ select.input { background-image: linear-gradient(45deg, transparent 50%, var(--t
   box-shadow: inset 0 1px 3px var(--sink);
 }
 .photopick img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* --- Numbered rows -------------------------------------------------------- */
+.rownum {
+  flex: 0 0 auto; min-width: 20px; text-align: right;
+  font-size: 12px; font-weight: 700; color: var(--text-3);
+  font-variant-numeric: tabular-nums; padding-top: 2px;
+}
