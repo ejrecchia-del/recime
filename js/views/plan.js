@@ -288,11 +288,17 @@ export function openWine(weekKey) {
         store.setSetting('wineBottles', bottles);
         rerender();
       });
-      on(root, 'click', '[data-a="tolist"]', () => {
+      on(root, 'click', '[data-a="tolist"]', async () => {
         const wp = planWine(entries, { bottles, targetPerBottle: target });
         for (const it of wineListItems(wp, store.settings.wineStore)) store.putShoppingItem(it);
+        // Anything marked "Every order" rides along without being asked for.
+        const standing = store.alwaysWines();
+        if (standing.length) {
+          const { addWineToList } = await import('./wine.js');
+          for (const w of standing) addWineToList(w);
+        }
         close();
-        toast(`${wp.bottles} bottles added to the list`, 'ok');
+        toast(`${wp.bottles} bottles added${standing.length ? ` · ${standing.length} standing` : ''}`, 'ok');
         window.__recimeNav.go('shop', { top: true });
       });
       on(root, 'click', '[data-a="handoff"]', () => {
