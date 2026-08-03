@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<title>ReciMe</title>
+<meta name="description" content="Our recipes, our week, our grocery list.">
+<meta name="theme-color" content="#16181c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ReciMe">
+<link rel="manifest" href="./app.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./app.css">
+</head>
+<body>
+<div id="app">
+  <div id="view"></div>
+  <nav class="nav" id="nav"></nav>
+</div>
+<script type="module" src="./js/app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      // A new version took over — reload once so you're not left on the old one.
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return; refreshing = true; location.reload();
+      });
+      reg.update();
+    }).catch(() => {});
+  });
+}
+</script>
+</body>
+</html>

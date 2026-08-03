@@ -1,0 +1,28 @@
+{
+  "name": "ReciMe",
+  "short_name": "ReciMe",
+  "description": "Our recipes, our week, our grocery list.",
+  "start_url": "./",
+  "scope": "./",
+  "id": "recime",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#16181c",
+  "theme_color": "#16181c",
+  "categories": ["food", "lifestyle", "productivity"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "share_target": {
+    "action": "./",
+    "method": "GET",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  },
+  "shortcuts": [
+    { "name": "Shopping list", "url": "./#/shop", "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "This week's plan", "url": "./#/plan", "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Ask what to cook", "url": "./#/chat", "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
