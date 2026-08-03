@@ -32,7 +32,14 @@ Deno.serve(async (req: Request) => {
     // Facebook and Instagram answer a plain server fetch with a login wall or a
     // 400. Their public embed endpoint is the supported way in, and for a
     // public reel it carries the whole caption.
+    const isMeta = /facebook\.com|fb\.watch|instagram\.com/i.test(url);
     const embedded = await socialCaption(url);
+    if (isMeta && !embedded) {
+      return json({
+        error: "Facebook won't let this one be read — the post has embedding switched off, which usually means licensed music. Open the reel, press and hold the caption to copy it, then use Paste. The app reads caption recipes properly now.",
+        code: 'embed-blocked',
+      }, 422);
+    }
     if (embedded && embedded.length > 60) {
       const meta0: Record<string, string> = {};
       let r0 = (ai && Deno.env.get('ANTHROPIC_API_KEY'))
@@ -285,8 +292,13 @@ async function socialCaption(url: string): Promise<string> {
  * Pull the human text out of an embed page and drop the chrome around it —
  * the like counts, the "See more", the login prompts.
  */
+const EMBED_BLOCKED = /can't be embedded|cannot be embedded|content owned by someone else|content isn't available|this content isn't available|video unavailable|sorry, this page isn't available|log in(?: to)? (?:facebook|instagram)/i;
+
 function captionFromEmbed(html: string): string {
   let t = stripToText(html);
+  // Meta disables embedding on some posts — usually the music is licensed.
+  // The page still returns 200, with an apology instead of the caption.
+  if (EMBED_BLOCKED.test(t) && t.length < 600) return '';
   // Everything before the first recipe-ish heading is author furniture.
   const cut = t.search(/\bingredients?\b\s*(\([^)]*\))?\s*:/i);
   if (cut > 0) t = t.slice(Math.max(0, cut - 220));
