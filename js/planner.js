@@ -37,6 +37,9 @@ export function generatePlan(recipes, opts = {}) {
   const weeknightMax = opts.weeknightMax || 40;
   const dietPrefs = opts.dietPrefs || [];
   const locked = opts.lockedSlots || [];
+  // Days you never cook. Anything outside this gets skipped up front rather
+  // than filled and then deleted.
+  const cookDays = Array.isArray(opts.cookDays) && opts.cookDays.length ? opts.cookDays : [0, 1, 2, 3, 4, 5, 6];
   const recentIds = opts.recentIds || [];
   const weeksAgo = opts.weeksAgo || [];
 
@@ -48,9 +51,16 @@ export function generatePlan(recipes, opts = {}) {
       const date = ymd(addDays(new Date(weekStart + 'T12:00:00'), d));
       // Locked picks and skipped meals survive a regenerate untouched.
       const existing = locked.find((s) => s.date === date && s.meal === meal && (s.locked || s.skipped));
+      const weekday = new Date(date + 'T12:00:00').getDay();
+      const standingSkip = !cookDays.includes(weekday);
       slots.push(existing
         ? { ...existing }
-        : { id: uid('slot'), date, meal, dayIndex: d, recipeId: '', servings, locked: false, skipped: false });
+        : {
+            id: uid('slot'), date, meal, dayIndex: d, recipeId: '', servings,
+            locked: false,
+            skipped: standingSkip,
+            skipReason: standingSkip ? 'not-a-cooking-night' : '',
+          });
     }
   }
 
@@ -205,6 +215,7 @@ export const SKIP_REASONS = [
   { id: 'takeout', label: 'Takeout', emoji: '\ud83e\udd61' },
   { id: 'leftovers', label: 'Leftovers', emoji: '\ud83e\udd61' },
   { id: 'away', label: 'Away from home', emoji: '\u2708\ufe0f' },
+  { id: 'not-a-cooking-night', label: 'Not a cooking night', emoji: '\ud83d\udcc5' },
   { id: 'other', label: 'Skip this one', emoji: '\u2013' },
 ];
 

@@ -200,6 +200,9 @@ const DEFAULT_SETTINGS = {
   aiKey: '',
   planDays: 7,
   planMeals: ['dinner'],
+  // Which days you actually cook. 0 = Sunday. A standing version of "skip
+  // days we're out" — Friday is takeout every week, so stop planning it.
+  cookDays: [0, 1, 2, 3, 4, 5, 6],
   householdSize: 2,          // kept in sync with the roster below
   people: [
     { id: 'p-eric', name: 'Eric', type: 'adult', age: null, eating: 'everything' },
@@ -389,6 +392,11 @@ class Store {
    */
   migrateSettings() {
     let changed = false;
+
+    if (!Array.isArray(this.settings.cookDays) || !this.settings.cookDays.length) {
+      this.settings.cookDays = [...DEFAULT_SETTINGS.cookDays];
+      changed = true;
+    }
 
     if (!this.settings.location || !this.settings.location.town) {
       this.settings.location = { ...DEFAULT_SETTINGS.location };
