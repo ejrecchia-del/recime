@@ -205,7 +205,12 @@ export default function renderSettings() {
       Price estimates: ${esc(PRICE_META.region)}, gathered ${esc(PRICE_META.researched)}. Sale prices at ShopRite and Acme typically run 25–40% below these.
       Nutrition figures on imported recipes are estimates.
     </div>
-    <div class="pad-x tiny dim" style="margin-top:10px">ReciMe · built for Eric &amp; Dale</div>`));
+    <div class="pad-x tiny dim" style="margin-top:10px;line-height:1.6">
+      ReciMe · built for Eric &amp; Dale<br>
+      <span class="mono">Running from ${esc(location.host)}</span><br>
+      <span class="mono dim" id="buildstamp">checking build…</span>
+      <button class="btn xs ghost" style="margin-left:6px" data-a="forceupdate">Force update</button>
+    </div>`));
 
   wire(root);
   return root;
@@ -308,6 +313,34 @@ function wire(root) {
     'Paste an Anthropic API key. It is stored on this device and used by your own backend function — it never goes anywhere else. This turns on video-caption recipe reading and smarter chat answers.'));
   on(root, 'click', '[data-a="ickey"]', () => openKey('instacartKey', 'Instacart API key',
     'Instacart closed new developer sign-ups, so most people will not have one of these. If you get access later, paste the key here for one-tap cart building.'));
+
+  // Which copy of the app is this? The single most useful thing to know when a
+  // feature is on one device and not another — usually two different URLs.
+  (async () => {
+    const stamp = $('#buildstamp', root);
+    if (!stamp) return;
+    try {
+      const txt = await fetch('./sw.js', { cache: 'no-store' }).then((r) => r.text());
+      const m = txt.match(/recime-[\w-]+/);
+      const live = m ? m[0] : 'unknown';
+      const keys = (await caches.keys().catch(() => [])).filter((k) => k.startsWith('recime-'));
+      const running = keys.length ? keys[keys.length - 1] : 'no cache yet';
+      stamp.textContent = running === live
+        ? 'Build ' + live + ' · up to date'
+        : 'Build ' + running + ' — newer available (' + live + ')';
+      if (running !== live) stamp.style.color = 'var(--warn)';
+    } catch (e) { stamp.textContent = 'Build unknown (offline)'; }
+  })();
+
+  on(root, 'click', '[data-a="forceupdate"]', async () => {
+    toast('Clearing the cache…');
+    try {
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (reg) await reg.unregister();
+      for (const k of await caches.keys()) await caches.delete(k);
+    } catch (e) { /* reload regardless */ }
+    setTimeout(() => location.reload(), 400);
+  });
 
   on(root, 'click', '[data-a="export"]', () => {
     downloadFile(`recime-backup-${new Date().toISOString().slice(0, 10)}.json`, store.exportJSON());
