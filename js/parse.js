@@ -189,6 +189,43 @@ export function splitRunOnIngredients(line) {
   return out.length ? out : [t];
 }
 
+/**
+ * A method pasted as one paragraph is one wall of text on the recipe page.
+ * Break a long step into sentences so "Heat a large Dutch oven… Add onion…
+ * Simmer for 1 hour." becomes the six steps it actually is.
+ *
+ * Careful about full stops that aren't sentence ends: decimals, temperatures,
+ * and the usual abbreviations.
+ */
+export function explodeStep(step) {
+  const t = String(step || '').trim();
+  if (t.length < 160) return [t];
+
+  const guarded = t
+    .replace(/(\d)\.(\d)/g, '$1\u0001$2')                       // 1.5
+    .replace(/\b(approx|approximately|tbsp|tsp|oz|lb|min|hr|no|vs|etc|Dr|Mr|Mrs|St)\./gi, '$1\u0001')
+    .replace(/\b([A-Z])\./g, '$1\u0001');                        // initials
+
+  const parts = guarded
+    .split(/(?<=[.!?])\s+(?=[A-Z0-9])/)
+    .map((x) => x.replace(/\u0001/g, '.').trim())
+    .filter(Boolean);
+
+  if (parts.length < 3) return [t];
+
+  // Glue orphan fragments onto the sentence before them — "Simmer." on its own
+  // is not a step.
+  const out = [];
+  for (const p of parts) {
+    if (out.length && (p.length < 28 || /^(then|and|stir|serve|season)\b/i.test(p) && p.length < 45)) {
+      out[out.length - 1] += ' ' + p;
+    } else {
+      out.push(p);
+    }
+  }
+  return out.length > 1 ? out : [t];
+}
+
 export function parseRecipeText(text, hint = {}) {
   const raw = unwrapCaption(text);
   const lines = raw.split('\n').map((l) => l.trim());
@@ -232,7 +269,8 @@ export function parseRecipeText(text, hint = {}) {
     .filter(Boolean);
   const steps = stepLines
     .map((s) => s.replace(/^\s*(?:step\s*)?\d+[.):]?\s*/i, '').replace(/^[-•*]\s*/, '').trim())
-    .filter((s) => s.length > 8);
+    .filter((s) => s.length > 8)
+    .flatMap(explodeStep);
 
   const servM = raw.match(/(?:serves|servings?|yield)[:\s]*(\d{1,2})/i)
     || raw.match(/(?:for\s+)?(\d{1,2})\s*(?:servings?|portions|people)/i);
