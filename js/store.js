@@ -754,9 +754,17 @@ class Store {
   }
 
   /** Recipes this household is willing to publish to its circles. */
+  /**
+   * What a circle sends: the whole library, because a circle is a shared
+   * cookbook rather than a diff. The starters go too — the receiving side
+   * skips any it already has under the same id, so nobody ends up with two
+   * copies of the same sheet-pan chicken.
+   */
   shareableRecipes() {
     return this.allRecipes().filter((r) => !r.private && !r.sharedFrom);
   }
+
+  shareableCount() { return this.shareableRecipes().length; }
 
   // --- store rules ---------------------------------------------------------
   storeRules() {
@@ -1078,6 +1086,12 @@ export async function pullFromCircles(store) {
         const incoming = row.data || {};
         // Never re-import our own recipes back in as "shared".
         if (incoming.sharedFromHousehold === store.settings.household) continue;
+        // If we already hold this exact recipe — almost always one of the
+        // starters both libraries shipped with — there is nothing to import.
+        // Sharing everything is right; showing it twice is not.
+        const mine = store.state.recipes[row.item_id];
+        if (mine && !mine.deleted && (mine.seed || !mine.sharedFrom)) continue;
+
         const localId = 'shared-' + c.id + '-' + row.item_id;
         const cur = store.state.recipes[localId];
         if (cur && (cur.updatedAt || '') >= (incoming.updatedAt || row.updated_at || '')) continue;

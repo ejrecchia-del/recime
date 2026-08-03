@@ -165,6 +165,13 @@ function boot() {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
   window.addEventListener('online', () => { if (store.settings.syncUrl) pullRemote(store); });
+
+  // Check on launch, when you come back to it, and every ten minutes.
+  checkForUpdate();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForUpdate();
+  });
+  setInterval(checkForUpdate, 10 * 60 * 1000);
 }
 
 /**
@@ -207,6 +214,39 @@ async function notifyAboutArrivals(knownNudges, knownRecipes) {
       newRecipes.length === 1 ? `${first.title}${first.addedBy ? ' — added by ' + first.addedBy : ''}` : 'Open ReciMe to see them',
       'newrecipes');
   }
+}
+
+/**
+ * A home-screen web app can sit on a cached build until it's fully closed,
+ * which is how the Wine tab could be live on the laptop and missing on the
+ * phone. Poll the service worker's stamp and offer a one-tap reload.
+ */
+let knownBuild = null;
+async function checkForUpdate() {
+  try {
+    const res = await fetch('./sw.js', { cache: 'no-store' });
+    if (!res.ok) return;
+    const txt = await res.text();
+    const m = txt.match(/recime-[\w-]+/);
+    if (!m) return;
+    if (!knownBuild) { knownBuild = m[0]; return; }
+    if (m[0] === knownBuild || document.querySelector('.updatebar')) return;
+
+    const bar = el(`<div class="updatebar">
+      <span class="grow">A newer version of ReciMe is ready.</span>
+      <button class="btn xs primary" data-a="reload">Update</button>
+    </div>`);
+    bar.addEventListener('click', async (e) => {
+      if (!e.target.closest('[data-a="reload"]')) return;
+      try {
+        const reg = await navigator.serviceWorker?.getRegistration();
+        if (reg) { await reg.update(); if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+        for (const k of await caches.keys()) await caches.delete(k);
+      } catch (err) { /* reload anyway */ }
+      location.reload();
+    });
+    document.body.appendChild(bar);
+  } catch (e) { /* offline — nothing to do */ }
 }
 
 function updateSyncDot() {

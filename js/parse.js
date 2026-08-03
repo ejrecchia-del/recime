@@ -392,6 +392,25 @@ export function isVideoUrl(url) {
   return /tiktok\.com|instagram\.com\/(reel|p|tv)|youtube\.com\/(watch|shorts)|youtu\.be|facebook\.com\/(reel|watch)/i.test(String(url));
 }
 
+/**
+ * Ask the backend for a stock photo of a dish. Returns a few candidates so the
+ * first one can be used straight away and the rest offered as alternatives.
+ */
+export async function findPhotos(query, settings) {
+  const base = String(settings.syncUrl || '').replace(/\/+$/, '');
+  if (!base || !settings.syncKey) return null;
+  try {
+    const res = await fetch(base + '/functions/v1/parse-recipe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + settings.syncKey, apikey: settings.syncKey },
+      body: JSON.stringify({ photo: query }),
+    });
+    if (!res.ok) return null;
+    const b = await res.json();
+    return (b.photos && b.photos.length) ? b : null;
+  } catch (e) { return null; }
+}
+
 export async function importFromUrl(url, settings) {
   const base = String(settings.syncUrl || '').replace(/\/+$/, '');
   if (!base || !settings.syncKey) {
