@@ -141,6 +141,9 @@ export const VERDICTS = [
 
 export function verdictOf(id) { return VERDICTS.find((v) => v.id === id); }
 
+/** Names compared the way a person would: case and spacing don't count. */
+function nameKey(n) { return String(n || '').trim().toLowerCase().replace(/\s+/g, ' '); }
+
 /** Collapse a list of sittings down to "what each person thought most recently". */
 export function latestVerdictMap(sittings) {
   const out = {};
@@ -288,6 +291,82 @@ class Store {
   }
 
   /**
+   * One person, one row. If the same name is on the roster twice, keep the
+   * better-filled copy and fold the other into it — then repoint any "who ate
+   * it" history at the survivor so nothing that was logged goes missing.
+   */
+  dedupePeople() {
+    const people = Array.isArray(this.settings.people) ? this.settings.people : [];
+    if (people.length < 2) return false;
+
+    const groups = new Map();
+    for (const p of people) {
+      const k = nameKey(p.name);
+      if (!k) continue;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(p);
+    }
+
+    // How much has actually been said about this person?
+    const richness = (p) => (p.dob ? 4 : 0)
+      + (p.eating && p.eating !== 'everything' ? 3 : 0)
+      + ((p.dislikes || []).length ? 2 : 0)
+      + (p.age != null ? 1 : 0)
+      + (String(p.id || '').startsWith('p-') ? 0 : 1);   // hand-added wins ties
+
+    const remap = new Map();
+    const keep = [];
+    let changed = false;
+
+    for (const [, dupes] of groups) {
+      if (dupes.length === 1) { keep.push(dupes[0]); continue; }
+      changed = true;
+      const sorted = dupes.slice().sort((a, b) => richness(b) - richness(a));
+      const winner = { ...sorted[0] };
+      for (const loser of sorted.slice(1)) {
+        // Take anything the winner is missing rather than throwing it away.
+        if (!winner.dob && loser.dob) winner.dob = loser.dob;
+        if (winner.age == null && loser.age != null) winner.age = loser.age;
+        if ((!winner.eating || winner.eating === 'everything') && loser.eating) winner.eating = loser.eating;
+        if (!(winner.dislikes || []).length && (loser.dislikes || []).length) winner.dislikes = loser.dislikes;
+        remap.set(loser.id, winner.id);
+      }
+      winner.dobNeeded = winner.type === 'child' && !winner.dob;
+      keep.push(winner);
+    }
+
+    if (!changed) return false;
+
+    // Keep the original order, minus the duplicates.
+    const order = new Map(people.map((p, i) => [nameKey(p.name), i]));
+    keep.sort((a, b) => (order.get(nameKey(a.name)) ?? 0) - (order.get(nameKey(b.name)) ?? 0));
+    this.settings.people = keep;
+
+    // Move any logged verdicts onto the surviving person.
+    if (remap.size) {
+      for (const r of Object.values(this.state.recipes || {})) {
+        let touched = false;
+        for (const sit of (r.sittings || [])) {
+          for (const [oldId, newId] of remap) {
+            if (sit.verdicts && sit.verdicts[oldId] != null) {
+              if (sit.verdicts[newId] == null) sit.verdicts[newId] = sit.verdicts[oldId];
+              delete sit.verdicts[oldId];
+              touched = true;
+            }
+          }
+        }
+        if (touched) {
+          r.verdicts = latestVerdictMap(r.sittings);
+          r.updatedAt = nowISO();
+          this.markDirty('recipe', r.id);
+        }
+      }
+      this.save();
+    }
+    return true;
+  }
+
+  /**
    * Fold any recipe still carrying the old flat verdict map into the sitting
    * history. Runs once per device; after that there's nothing left to fold.
    */
@@ -346,13 +425,23 @@ class Store {
       // An install that predates the kids being added. Backfill anyone we know
       // about who isn't on the roster yet — once only, so a person you delete
       // stays deleted.
+      //
+      // Match on NAME as well as id. Matching on id alone was a bug: someone
+      // who had already added Jaxon by hand got a *second* Jaxon, because the
+      // hand-added one has a generated id and the default one doesn't.
       const have = new Set(this.settings.people.map((p) => p.id));
+      const names = new Set(this.settings.people.map((p) => nameKey(p.name)));
       for (const def of DEFAULT_SETTINGS.people) {
-        if (!have.has(def.id)) { this.settings.people.push({ ...def }); changed = true; }
+        if (have.has(def.id) || names.has(nameKey(def.name))) continue;
+        this.settings.people.push({ ...def });
+        changed = true;
       }
       this.settings.peopleSeeded = true;
       changed = true;
     }
+
+    // Repair anyone already caught by that bug.
+    if (this.dedupePeople()) changed = true;
     const derived = this.householdServings();
     if (this.settings.householdSize !== derived) { this.settings.householdSize = derived; changed = true; }
 
