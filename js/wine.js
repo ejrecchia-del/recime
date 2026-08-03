@@ -188,6 +188,35 @@ export const STYLES = [
 
 export function styleOf(id) { return STYLES.find((s) => s.id === id); }
 
+/** 1-5 body score to the word people actually use. */
+export function bodyWord(n) {
+  if (n == null) return '';
+  if (n <= 2) return 'light';
+  if (n <= 3) return 'medium';
+  return 'full';
+}
+
+export const BODY_BANDS = [
+  { id: 'light', label: 'Light', test: (b) => b != null && b <= 2 },
+  { id: 'medium', label: 'Medium', test: (b) => b === 3 },
+  { id: 'full', label: 'Full', test: (b) => b != null && b >= 4 },
+];
+
+/** "13.5%" or "12–13%" -> a number we can filter on. */
+export function abvNumber(abv) {
+  const m = String(abv || '').match(/(\d{1,2}(?:\.\d)?)/g);
+  if (!m || !m.length) return null;
+  const nums = m.map(Number).filter((n) => n > 3 && n < 25);
+  if (!nums.length) return null;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+export const ABV_BANDS = [
+  { id: 'low', label: 'Under 12%', test: (n) => n != null && n < 12 },
+  { id: 'mid', label: '12–14%', test: (n) => n != null && n >= 12 && n < 14 },
+  { id: 'high', label: '14%+', test: (n) => n != null && n >= 14 },
+];
+
 // --- Pairing ----------------------------------------------------------------
 // Each rule looks at the dish and, if it matches, proposes styles in order of
 // confidence. Rules are checked top to bottom and the first three distinct
@@ -386,6 +415,33 @@ export function planWine(entries, { bottles = 12, targetPerBottle = 12 } = {}) {
     acc[b.style.colour] = (acc[b.style.colour] || 0) + b.bottles;
     return acc;
   }, {});
+
+  // For each thing we're buying, what else would have worked? Taken from the
+  // second and third choices across the nights that wanted it, so a swap is
+  // still a sensible pairing rather than just another red.
+  const altFor = new Map();
+  for (const n of perNight) {
+    const ids = n.pairing.picks.map((p) => p.style && p.style.id).filter(Boolean);
+    for (const id of ids) {
+      if (!altFor.has(id)) altFor.set(id, new Set());
+      for (const other of ids) if (other !== id) altFor.get(id).add(other);
+    }
+  }
+  for (const b of buy) {
+    const set = altFor.get(b.style.id) || new Set();
+    b.alternatives = [...set].map(styleOf).filter(Boolean).slice(0, 4);
+    if (!b.alternatives.length) {
+      // Nothing else was suggested that night — offer the nearest neighbours
+      // by colour and weight instead.
+      b.alternatives = STYLES
+        .filter((x) => x.id !== b.style.id && x.colour === b.style.colour
+          && Math.abs(x.body - b.style.body) <= 1)
+        .slice(0, 4);
+    }
+    b.forNights = perNight
+      .filter((n) => n.pairing.picks.some((p) => p.style && p.style.id === b.style.id))
+      .map((n) => n.recipe.title);
+  }
 
   return {
     perNight,
