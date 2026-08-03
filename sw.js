@@ -1,5 +1,5 @@
 // ReciMe service worker — offline-first for the app shell, network-first for data
-const CACHE = 'recime-20260803-0800';
+const CACHE = 'recime-20260803-0820';
 const SHELL = [
   './', './index.html', './app.css', './app.webmanifest',
   './js/app.js', './js/store.js', './js/ui.js', './js/util.js',
@@ -31,8 +31,19 @@ self.addEventListener('fetch', (e) => {
   // Network-first: always take a fresh copy when there's signal, so a new
   // deploy shows up on the next launch instead of a stale one. Cache is the
   // fallback, which is what makes the app work in the store with no bars.
+  // GitHub Pages serves assets with a ten-minute CDN cache, so a plain request
+  // can return yesterday's file long after the deploy landed. Stamping the
+  // build onto the URL gives each release its own cache key and makes an
+  // update land the moment it's published.
+  const versioned = (r) => {
+    if (!/\.(js|css|webmanifest|json)$/.test(url.pathname)) return r;
+    const u = new URL(r.url);
+    u.searchParams.set('v', CACHE);
+    return new Request(u.toString(), { headers: r.headers, mode: 'cors', credentials: 'same-origin' });
+  };
+
   e.respondWith(
-    fetch(req).then((res) => {
+    fetch(versioned(req)).then((res) => {
       if (res && res.status === 200 && res.type === 'basic') {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));
