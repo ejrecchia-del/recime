@@ -186,7 +186,10 @@ const DEFAULT_SETTINGS = {
     // Alcohol is always a separate Instacart order with its own delivery and
     // an ID check — and the case discount is in-person only, so this one
     // defaults to a trip rather than a cart.
-    { id: 'totalwine', name: 'Total Wine & More', slug: 'total-wine-more', primary: false, wine: true, dest: 'in-person' },
+    { id: 'chesterfine', name: 'Chester Fine Wines', slug: '', primary: false, wine: true, dest: 'in-person',
+      site: 'https://chesterfinewines.com', note: '6 mi · free local delivery · case discount in store' },
+    { id: 'wegmans-wine', name: 'Wine, Liquor & Beer at Hanover Wegmans', slug: 'wine-liquor-beer-at-hanover-wegmans', primary: false, wine: true, dest: 'in-person', note: '12.5 mi · no Instacart markup' },
+    { id: 'totalwine', name: 'Total Wine & More', slug: 'total-wine-more', primary: false, wine: true, dest: 'in-person', note: '23.7 mi · $7 long-distance delivery fee' },
   ],
   defaultStore: 'shoprite',
   defaultDest: 'in-person',
@@ -219,7 +222,11 @@ const DEFAULT_SETTINGS = {
   wineEnabled: true,
   wineTargetPerBottle: 12,
   wineBottles: 12,
-  wineStore: 'totalwine',
+  wineStore: 'chesterfine',
+  // Where you actually shop. Drives which stores are suggested, and labels the
+  // price estimates honestly. A postcode rather than GPS: it survives being
+  // away from home and doesn't ask for a permission nobody wants to grant.
+  location: { town: 'Mendham', state: 'NJ', postcode: '07945', country: 'US' },
 };
 
 // Starter recipes get back-dated timestamps in curated order, so "recently
@@ -303,6 +310,11 @@ class Store {
    */
   migrateSettings() {
     let changed = false;
+
+    if (!this.settings.location || !this.settings.location.town) {
+      this.settings.location = { ...DEFAULT_SETTINGS.location };
+      changed = true;
+    }
 
     // New default stores (Costco, etc.) should appear for existing installs.
     const stores = Array.isArray(this.settings.stores) ? this.settings.stores : [];
