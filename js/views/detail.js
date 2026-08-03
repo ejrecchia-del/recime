@@ -173,6 +173,7 @@ export default function renderDetail(r) {
     ${r.imageCredit?.credit ? `<div class="tiny dim" style="margin-top:5px">Photo: ${esc(r.imageCredit.credit)}${r.imageCredit.source ? ` · <a href="${esc(r.imageCredit.source)}" target="_blank" rel="noopener">${esc(r.imageCredit.license || 'source')}</a>` : ''}${r.imageCredit.match === 'close' ? ' · stock photo, not this exact dish' : ''}</div>` : ''}
     <div class="row" style="margin-top:10px;gap:9px">
       <button class="btn sm grow ghost" data-a="photo">📷 ${r.image ? 'Change photo' : 'Add a photo'}</button>
+      ${!r.image ? '<button class="btn sm grow ghost" data-a="findphoto">🔎 Find one</button>' : ''}
       ${otherPeople().length ? `<button class="btn sm grow ghost" data-a="nudge">🔔 Tell someone</button>` : ''}
     </div>
   </div>`));
@@ -202,6 +203,18 @@ export default function renderDetail(r) {
   on(root, 'click', '[data-a="healthify"]', () => doHealthify(r));
   on(root, 'click', '[data-a="more"]', () => openMore(r));
   on(root, 'click', '[data-a="photo"]', () => pickPhoto(r));
+  on(root, 'click', '[data-a="findphoto"]', async () => {
+    toast('Looking for a photo…');
+    const { findPhotos } = await import('../parse.js');
+    const found = await findPhotos(r.title, store.settings);
+    if (!found) { toast('Couldn\'t find one', 'err'); return; }
+    store.updateRecipe(r.id, {
+      image: found.photos[0].image,
+      imageCredit: { credit: found.credit, license: found.license, source: found.photos[0].source, match: 'close' },
+    });
+    toast('Photo added', 'ok');
+    nav.render();
+  });
   on(root, 'click', '[data-a="whoate"]', () => openWhoAte(r.id));
   on(root, 'click', '[data-a="newsitting"]', () => openWhoAte(r.id, { fresh: true }));
   on(root, 'click', '[data-a="history"]', () => openHistory(r.id));

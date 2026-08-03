@@ -8,6 +8,7 @@ import { AISLE_ORDER } from '../store.js';
 import {
   importFromUrl, parseRecipeText, normaliseImported, isVideoUrl, hostOf,
   estimateNutrition, guessCategory, extractUrl, parseIngredientLine,
+  findPhotos,
 } from '../parse.js';
 
 export function openImportSheet({ url = '', text = '', title = '', auto = false } = {}) {
@@ -189,8 +190,15 @@ export function openEditSheet(data, { isNew = false } = {}) {
     <div class="field"><label>Steps — one per line</label>
       <textarea class="input" id="e-steps" style="min-height:170px" placeholder="Heat the oven to 425°F.&#10;Toss everything on a sheet pan.">${esc(r.steps.join('\n'))}</textarea></div>
 
-    <div class="field"><label>Photo URL (optional)</label>
-      <input class="input" id="e-img" value="${esc(r.image || '')}" placeholder="https://…"></div>
+    <div class="field"><label>Photo</label>
+      <div id="e-photo" class="photopick">${r.image
+        ? `<img src="${esc(r.image)}" alt="">`
+        : '<span class="dim small">Looking for one…</span>'}</div>
+      <div class="row" style="gap:7px;margin-top:7px">
+        <button type="button" class="btn sm ghost grow" data-a="findphoto">🔎 Find a photo</button>
+        <button type="button" class="btn sm ghost" data-a="nextphoto">Try another</button>
+      </div>
+      <input class="input" id="e-img" value="${esc(r.image || '')}" placeholder="…or paste an image link" style="margin-top:7px;font-size:12px"></div>
 
     <div class="row">
       <button class="btn grow" data-a="cancel">Cancel</button>
@@ -200,6 +208,50 @@ export function openEditSheet(data, { isNew = false } = {}) {
 
   sheet(isNew ? 'Check it over' : 'Edit recipe', body, {
     onMount(root, close) {
+      // --- photo -----------------------------------------------------------
+      // A pasted recipe arrives with no picture, so go and find one without
+      // being asked. The first hit is applied; "Try another" cycles the rest.
+      let photoPool = [];
+      let photoAt = 0;
+      const photoBox = $('#e-photo', root);
+      const imgField = $('#e-img', root);
+
+      const showPhoto = (url) => {
+        imgField.value = url || '';
+        photoBox.innerHTML = url ? `<img src="${esc(url)}" alt="">` : '<span class="dim small">No photo</span>';
+      };
+
+      const lookUp = async (explicit) => {
+        const q = $('#e-title', root).value.trim();
+        if (!q) { toast('Give it a title first', 'err'); return; }
+        photoBox.innerHTML = '<span class="dim small"><span class="spinner"></span> Looking…</span>';
+        const found = await findPhotos(q, store.settings);
+        if (!found) {
+          photoBox.innerHTML = '<span class="dim small">Couldn\'t find one — paste a link below</span>';
+          if (explicit) toast('No photo found', 'err');
+          return;
+        }
+        photoPool = found.photos;
+        photoAt = 0;
+        photoCredit = { credit: found.credit, license: found.license, source: photoPool[0].source, match: 'close' };
+        showPhoto(photoPool[0].image);
+      };
+
+      let photoCredit = r.imageCredit || null;
+      on(root, 'click', '[data-a="findphoto"]', () => lookUp(true));
+      on(root, 'click', '[data-a="nextphoto"]', () => {
+        if (!photoPool.length) { lookUp(true); return; }
+        photoAt = (photoAt + 1) % photoPool.length;
+        if (photoCredit) photoCredit.source = photoPool[photoAt].source;
+        showPhoto(photoPool[photoAt].image);
+      });
+      imgField.addEventListener('input', () => {
+        photoBox.innerHTML = imgField.value.trim()
+          ? `<img src="${esc(imgField.value.trim())}" alt="">`
+          : '<span class="dim small">No photo</span>';
+      });
+      if (!r.image) setTimeout(() => lookUp(false), 150);
+
       on(root, 'click', '[data-a="cancel"]', close);
       on(root, 'click', '[data-a="save"]', () => {
         const title = $('#e-title', root).value.trim();
@@ -220,6 +272,7 @@ export function openEditSheet(data, { isNew = false } = {}) {
           mealType: $('#e-meal', root).value,
           cuisine: $('#e-cuisine', root).value,
           image: $('#e-img', root).value.trim(),
+          imageCredit: $('#e-img', root).value.trim() ? photoCredit : null,
           ingredients,
           steps,
         };

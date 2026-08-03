@@ -49,7 +49,8 @@ export default function renderSettings() {
   const sharedIn = store.allRecipes().filter((r) => r.sharedFrom).length;
   root.appendChild(section('Sharing recipes with friends', `
     <div class="card pad stack">
-      <p class="small muted" style="margin:0">A circle shares <b>recipes only</b>. Your meal plan, shopping list and pantry never leave your own household \u2014 friends see the food, not your groceries.</p>
+      <p class="small muted" style="margin:0">A circle is a shared cookbook. It shares <b>recipes only</b> \u2014 your meal plan, shopping list and pantry never leave your own household.</p>
+      <div class="tiny dim">${store.shareableCount()} recipes would be shared. Anything they already have is skipped rather than duplicated.</div>
       ${circles.length ? `<div class="card" style="margin:0">
         ${circles.map((c) => `<div class="lrow" data-circle="${esc(c.id)}">
           <div class="thumb" style="background:var(--bg-3);font-size:17px">\ud83d\udc65</div>
