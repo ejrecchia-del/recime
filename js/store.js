@@ -18,7 +18,7 @@ export const FREQUENCIES = [
 export const AISLES = [
   'Produce', 'Meat & Seafood', 'Dairy & Eggs', 'Bakery', 'Deli',
   'Canned & Jarred', 'Dry Goods & Pasta', 'Condiments & Sauces',
-  'Spices & Baking', 'Frozen', 'Beverages', 'Household', 'Other',
+  'Spices & Baking', 'Frozen', 'Beverages', 'Wine & Beer', 'Household', 'Other',
 ];
 
 // The order you actually walk a ShopRite/Acme: perimeter first, then center
@@ -26,7 +26,7 @@ export const AISLES = [
 export const AISLE_ORDER = [
   'Produce', 'Bakery', 'Deli', 'Meat & Seafood', 'Dairy & Eggs',
   'Dry Goods & Pasta', 'Canned & Jarred', 'Condiments & Sauces',
-  'Spices & Baking', 'Beverages', 'Household', 'Other', 'Frozen',
+  'Spices & Baking', 'Beverages', 'Wine & Beer', 'Household', 'Other', 'Frozen',
 ];
 
 export const AISLE_META = {
@@ -41,6 +41,7 @@ export const AISLE_META = {
   'Spices & Baking': { emoji: '🧂', color: '#a06a8a' },
   'Frozen': { emoji: '🧊', color: '#5aa8c9' },
   'Beverages': { emoji: '🧃', color: '#6a7ac9' },
+  'Wine & Beer': { emoji: '🍷', color: '#9c4a5f' },
   'Household': { emoji: '🧻', color: '#8a8a8a' },
   'Other': { emoji: '🛒', color: '#7a7a7a' },
 };
@@ -170,6 +171,10 @@ const DEFAULT_SETTINGS = {
     { id: 'shoprite', name: 'ShopRite', slug: 'shoprite', primary: true },
     { id: 'acme', name: 'Acme', slug: 'acme-markets', primary: false },
     { id: 'costco', name: 'Costco', slug: 'costco', primary: false },
+    // Alcohol is always a separate Instacart order with its own delivery and
+    // an ID check — and the case discount is in-person only, so this one
+    // defaults to a trip rather than a cart.
+    { id: 'totalwine', name: 'Total Wine & More', slug: 'total-wine-more', primary: false, wine: true, dest: 'in-person' },
   ],
   defaultStore: 'shoprite',
   defaultDest: 'in-person',
@@ -197,6 +202,12 @@ const DEFAULT_SETTINGS = {
   weeknightMaxMinutes: 40,
   theme: 'dark',
   showPrices: true,
+  // Wine. targetPerBottle is what you want to pay *after* the case discount,
+  // which is the number that actually matters at the till.
+  wineEnabled: true,
+  wineTargetPerBottle: 12,
+  wineBottles: 12,
+  wineStore: 'totalwine',
 };
 
 // Starter recipes get back-dated timestamps in curated order, so "recently
