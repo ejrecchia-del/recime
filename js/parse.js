@@ -309,7 +309,26 @@ export function autoTags({ title = '', ingredients = [], steps = [], text = '' }
 
   if (/freeze|freezer/.test(hay)) tags.add('freezer-friendly');
   if (/meal ?prep|make ahead|lunches/.test(hay)) tags.add('meal-prep');
-  return Array.from(tags).slice(0, 5);
+
+  // What kind of dish is it? The starter recipes carry these by hand; without
+  // this, an imported soup never picked up the soup tag and went missing from
+  // the filter.
+  const t = (title + ' ' + steps.join(' ')).toLowerCase();
+  if (/\b(soup|stew|chowder|chili|bisque|broth[- ]based|ramen|pho)\b/.test(t)
+      || /\b(simmer|ladle)\b.*\b(bowls?)\b/.test(t)) tags.add('soup');
+  if (/\bsalad\b/.test(t)) tags.add('salad');
+  if (/\b(pasta|spaghetti|penne|rigatoni|linguine|fettuccine|lasagna|orzo|gnocchi|noodles?)\b/.test(t)) tags.add('pasta');
+  if (/\b(grill|grilled|barbecue|bbq)\b/.test(t)) tags.add('grill');
+  if (/\b(curry|masala|tikka)\b/.test(t)) tags.add('curry');
+  if (/\b(taco|burrito|quesadilla|enchilada|fajita)\b/.test(t)) tags.add('tacos');
+  if (/\b(sandwich|burger|wrap|panini|melt)\b/.test(t)) tags.add('sandwich');
+  if (/\b(no[- ]bake)\b/.test(t)) tags.add('no-bake');
+  if (/\b(bake|baked|oven|bread|dough)\b/.test(t) && /\b(cake|cookie|brownie|muffin|loaf|bread|pie|tart|bun|roll)\b/.test(t)) tags.add('baking');
+
+  const mins = (String(text).match(/(\d{1,3})\s*min/g) || []).map((x) => parseInt(x, 10));
+  if (mins.length && Math.max(...mins) <= 30) tags.add('30-minute');
+
+  return Array.from(tags).slice(0, 6);
 }
 
 export function estimateNutrition(recipe) {
