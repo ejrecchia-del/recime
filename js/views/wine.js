@@ -9,7 +9,7 @@
 import store, { WINE_FREQUENCIES, wineFrequency } from '../store.js';
 import { el, on, toast, sheet, confirmSheet, emptyState, starsHtml, $ } from '../ui.js';
 import { esc, relTime } from '../util.js';
-import { STYLES, styleOf, planWine } from '../wine.js';
+import { STYLES, styleOf, planWine, bodyWord, BODY_BANDS, ABV_BANDS, abvNumber, caseMath } from '../wine.js';
 import { openWine as openWeekWine } from './plan.js';
 
 const COLOURS = [
@@ -21,7 +21,17 @@ const COLOURS = [
   { id: 'sweet', label: 'Dessert', emoji: '🍯' },
 ];
 
-const filters = { colour: '', freq: '', favorites: false, q: '', sort: 'rating' };
+const filters = { colour: '', freq: '', favorites: false, q: '', body: '', abv: '', minRating: 0, onSale: false, sort: 'rating' };
+
+/** Everything we know about one bottle's shape, wherever it came from. */
+function shapeOf(w) {
+  const st = w.styleId ? styleOf(w.styleId) : null;
+  return {
+    style: st,
+    body: st ? st.body : null,
+    abv: abvNumber(w.abv) ?? (st ? abvNumber(st.abv) : null),
+  };
+}
 
 export default function renderWine() {
   const root = el('<div class="screen"></div>');
@@ -84,17 +94,49 @@ export default function renderWine() {
     return root;
   }
 
+  // --- budget ---------------------------------------------------------------
+  const bottles = store.settings.wineBottles || 12;
+  const target = store.settings.wineTargetPerBottle || 12;
+  const bm = caseMath(bottles, target / (1 - (bottles >= 12 ? 0.15 : bottles >= 6 ? 0.10 : 0)));
+  root.appendChild(el(`<div class="pad-x" style="margin-top:2px">
+    <div class="card pad" style="margin:0">
+      <div class="row-between" style="margin-bottom:8px">
+        <span style="font-weight:700">Budget</span>
+        <span class="tiny dim">${bm.tier.label} · ${Math.round(bm.tier.discount * 100)}% off</span>
+      </div>
+      <div class="row" style="gap:9px">
+        <div class="field grow"><label>Bottles</label>
+          <div class="segment" id="wb">
+            ${[6, 12, 18].map((n) => `<button data-b="${n}" class="${bottles === n ? 'on' : ''}">${n}</button>`).join('')}
+          </div></div>
+        <div class="field" style="max-width:118px"><label>Per bottle, after</label>
+          <input class="input" id="wtarget" type="number" min="5" max="60" step="1" value="${target}"></div>
+      </div>
+      <div class="kv" style="margin-top:8px"><span class="k">Shelf ceiling</span>
+        <span class="v"><b>$${(target / (1 - bm.tier.discount)).toFixed(2)}</b> a bottle</span></div>
+      <div class="kv"><span class="k">Case total</span>
+        <span class="v">about <b>$${bm.net.toFixed(0)}</b> for ${bottles}</span></div>
+      ${bm.nextTier ? `<div class="tiny" style="color:var(--warn);margin-top:5px">📌 ${bm.nextTier.need} more and the discount goes to ${Math.round(bm.nextTier.discount * 100)}%.</div>` : ''}
+    </div>
+  </div>`));
+
   // --- filters ---------------------------------------------------------------
-  root.appendChild(el(`<div class="pad-x" style="margin-top:8px">
+  root.appendChild(el(`<div class="pad-x" style="margin-top:10px">
     <div class="search"><span>🔍</span>
       <input id="wq" placeholder="Search producer, grape, region" value="${esc(filters.q)}" autocomplete="off"></div>
   </div>
   <div class="chips" style="margin-top:9px">
     <button class="chip ${filters.favorites ? 'on' : ''}" data-f="fav">★ Favorites</button>
+    <button class="chip ${filters.minRating >= 4 ? 'on' : ''}" data-f="rated">⭐ 4+ only</button>
+    <button class="chip ${filters.onSale ? 'on' : ''}" data-f="sale">🏷 On sale</button>
     ${WINE_FREQUENCIES.filter((f) => f.id !== 'never').map((f) => `<button class="chip ${filters.freq === f.id ? 'on' : ''}" data-f="freq:${f.id}">${f.emoji} ${esc(f.label)}</button>`).join('')}
   </div>
   <div class="chips" style="margin-top:6px">
     ${COLOURS.map((c) => `<button class="chip sm ${filters.colour === c.id ? 'on' : ''}" data-f="colour:${c.id}">${c.emoji || ''} ${esc(c.label)}</button>`).join('')}
+  </div>
+  <div class="chips" style="margin-top:6px">
+    ${BODY_BANDS.map((b) => `<button class="chip sm ${filters.body === b.id ? 'on' : ''}" data-f="body:${b.id}">${esc(b.label)} bodied</button>`).join('')}
+    ${ABV_BANDS.map((b) => `<button class="chip sm ${filters.abv === b.id ? 'on' : ''}" data-f="abv:${b.id}">${esc(b.label)}</button>`).join('')}
   </div>`));
 
   // --- the cellar ------------------------------------------------------------
@@ -102,6 +144,16 @@ export default function renderWine() {
   if (filters.favorites) list = list.filter((w) => w.favorite);
   if (filters.freq) list = list.filter((w) => w.frequency === filters.freq);
   if (filters.colour) list = list.filter((w) => (w.colour || 'red') === filters.colour);
+  if (filters.minRating) list = list.filter((w) => (w.rating || 0) >= filters.minRating);
+  if (filters.onSale) list = list.filter((w) => w.salePrice != null);
+  if (filters.body) {
+    const band = BODY_BANDS.find((b) => b.id === filters.body);
+    list = list.filter((w) => band && band.test(shapeOf(w).body));
+  }
+  if (filters.abv) {
+    const band = ABV_BANDS.find((b) => b.id === filters.abv);
+    list = list.filter((w) => band && band.test(shapeOf(w).abv));
+  }
   if (filters.q) {
     const q = filters.q.toLowerCase();
     list = list.filter((w) => [w.name, w.producer, w.grape, w.region, w.country, w.notes]
@@ -111,8 +163,12 @@ export default function renderWine() {
     || String(b.lastBoughtAt || b.createdAt).localeCompare(String(a.lastBoughtAt || a.createdAt)));
 
   root.appendChild(el(`<div class="pad" style="padding-top:10px">
+    <div class="row-between" style="margin-bottom:7px">
+      <span class="small muted">${list.length} of ${all.length} bottle${all.length === 1 ? '' : 's'}</span>
+      ${list.length !== all.length ? '<button class="btn xs ghost" data-f="clear">Clear filters</button>' : ''}
+    </div>
     ${list.length
-      ? `<div class="card">${list.map((w) => row(w, true)).join('')}</div>`
+      ? `<div class="card">${list.map((w, i) => row(w, true, i + 1)).join('')}</div>`
       : '<p class="muted small center">Nothing matches those filters.</p>'}
   </div>`));
 
@@ -120,21 +176,23 @@ export default function renderWine() {
   return root;
 }
 
-function row(w, showFreq = false) {
+function row(w, showFreq = false, n = null) {
   const st = w.styleId ? styleOf(w.styleId) : null;
   const f = wineFrequency(w.frequency);
+  const body = st ? bodyWord(st.body) : '';
   const emoji = w.colour === 'white' ? '🥂' : w.colour === 'rose' ? '🌸'
     : w.colour === 'sparkling' ? '🍾' : w.colour === 'sweet' ? '🍯' : '🍷';
   const price = w.salePrice != null ? `<b style="color:var(--accent-2)">$${Number(w.salePrice).toFixed(2)}</b> <s class="dim">$${Number(w.price).toFixed(2)}</s>`
     : w.price != null ? `$${Number(w.price).toFixed(2)}` : '';
   return `<div class="lrow" data-wine="${esc(w.id)}">
+    ${n != null ? `<span class="rownum">${n}</span>` : ''}
     <div class="thumb" style="background:var(--bg-3);font-size:18px">${emoji}</div>
     <div class="grow" style="min-width:0">
       <div class="row" style="gap:6px">
         <span style="font-weight:650" class="truncate">${esc(w.name)}</span>
         ${w.favorite ? '<span>❤️</span>' : ''}
       </div>
-      <div class="tiny dim truncate">${[w.vintage, w.grape || (st && st.name), w.region, w.abv].filter(Boolean).map(esc).join(' · ')}</div>
+      <div class="tiny dim truncate">${[w.vintage, w.grape || (st && st.name), body ? body + ' bodied' : '', w.region, w.abv || (st && st.abv)].filter(Boolean).map(esc).join(' · ')}</div>
       <div class="row tiny" style="gap:8px;margin-top:2px">
         ${price ? `<span>${price}</span>` : ''}
         ${w.score ? `<span class="tag">${esc(w.score)}</span>` : ''}
@@ -161,10 +219,31 @@ function wire(root) {
   on(root, 'click', '[data-f]', (e, t) => {
     const f = t.dataset.f;
     if (f === 'fav') filters.favorites = !filters.favorites;
+    else if (f === 'rated') filters.minRating = filters.minRating >= 4 ? 0 : 4;
+    else if (f === 'sale') filters.onSale = !filters.onSale;
+    else if (f === 'clear') Object.assign(filters, { colour: '', freq: '', favorites: false, body: '', abv: '', minRating: 0, onSale: false, q: '' });
     else if (f.startsWith('freq:')) filters.freq = filters.freq === f.slice(5) ? '' : f.slice(5);
     else if (f.startsWith('colour:')) filters.colour = f.slice(7);
+    else if (f.startsWith('body:')) filters.body = filters.body === f.slice(5) ? '' : f.slice(5);
+    else if (f.startsWith('abv:')) filters.abv = filters.abv === f.slice(4) ? '' : f.slice(4);
     nav.render();
   });
+
+  on(root, 'click', '#wb button', (e, t) => {
+    store.setSetting('wineBottles', Number(t.dataset.b));
+    nav.render();
+  });
+  const tgt = $('#wtarget', root);
+  if (tgt) {
+    let tt = null;
+    tgt.addEventListener('input', () => {
+      clearTimeout(tt);
+      tt = setTimeout(() => {
+        const v = Number(tgt.value);
+        if (v >= 5 && v <= 60) { store.setSetting('wineTargetPerBottle', v); nav.render(); }
+      }, 500);
+    });
+  }
 
   const q = $('#wq', root);
   if (q) {

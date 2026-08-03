@@ -6,7 +6,7 @@ import { el, on, artHtml, artStyle, toast, sheet, confirmSheet, emptyState, copy
 import { esc, ymd, weekStartOf, addDays, parseYmd, prettyDate, DAY_SHORT, fmtMinutes, totalMinutes, recipeArt } from '../util.js';
 import { generatePlan, reroll, planSummary, slotDateLabel, skipSlot, unskipSlot, skipDay, unskipDay, SKIP_REASONS, skipReasonOf } from '../planner.js';
 import { buildListFromPlan } from './shop.js';
-import { planWine, wineListItems, wineHandoffPayload, caseMath, CASE_TIERS } from '../wine.js';
+import { planWine, wineListItems, wineHandoffPayload, caseMath, CASE_TIERS, STYLES, bodyWord } from '../wine.js';
 
 let viewWeek = null;
 
@@ -226,9 +226,27 @@ export function openWine(weekKey) {
 
   let bottles = store.settings.wineBottles || 12;
   let target = store.settings.wineTargetPerBottle || 12;
+  const swaps = new Map();     // styleId you didn't want -> the one you'd rather
+  const nudges = new Map();    // styleId -> +/- bottles you set by hand
+
+  const applyEdits = (wp) => {
+    wp.buy = wp.buy.map((b) => {
+      const to = swaps.get(b.style.id);
+      const style = to ? (STYLES.find((x) => x.id === to) || b.style) : b.style;
+      const delta = nudges.get(style.id) || 0;
+      return { ...b, style, bottles: Math.max(0, b.bottles + delta) };
+    }).filter((b) => b.bottles > 0);
+    wp.bottles = wp.buy.reduce((t, b) => t + b.bottles, 0);
+    wp.colours = wp.buy.reduce((acc, b) => {
+      acc[b.style.colour] = (acc[b.style.colour] || 0) + b.bottles; return acc;
+    }, {});
+    wp.math = caseMath(wp.bottles, wp.shelfCeiling * (1 - wp.tier.discount) / (1 - wp.tier.discount));
+    wp.math = caseMath(wp.bottles, wp.shelfCeiling);
+    return wp;
+  };
 
   const draw = () => {
-    const wp = planWine(entries, { bottles, targetPerBottle: target });
+    const wp = applyEdits(planWine(entries, { bottles, targetPerBottle: target }));
     const m = wp.math;
     return `<div class="pad stack">
       <div class="field"><label>How many bottles?</label>
@@ -247,12 +265,24 @@ export function openWine(weekKey) {
       <div>
         <div class="small muted" style="margin-bottom:7px">What to buy</div>
         <div class="card">
-          ${wp.buy.map((b) => `<div class="lrow">
+          ${wp.buy.map((b, i) => `<div class="lrow" style="align-items:flex-start">
+            <span class="rownum">${i + 1}</span>
             <div class="thumb" style="background:var(--bg-3);font-size:17px">${b.style.colour === 'white' ? '🥂' : b.style.colour === 'rose' ? '🌸' : b.style.colour === 'sparkling' ? '🍾' : b.style.colour === 'sweet' ? '🍯' : '🍷'}</div>
             <div class="grow" style="min-width:0">
-              <div style="font-weight:650">${b.bottles} × ${esc(b.style.name)}</div>
-              <div class="tiny dim">${esc(b.style.notes)} · ${esc(b.style.abv)}</div>
+              <div class="row-between">
+                <span style="font-weight:650">${b.bottles} × ${esc(b.style.name)}</span>
+                <span class="row" style="gap:4px">
+                  <button class="btn xs ghost" data-less="${esc(b.style.id)}">−</button>
+                  <button class="btn xs ghost" data-more="${esc(b.style.id)}">+</button>
+                </span>
+              </div>
+              <div class="tiny dim">${esc(bodyWord(b.style.body))} bodied · ${esc(b.style.notes)} · ${esc(b.style.abv)}</div>
               <div class="tiny" style="color:var(--accent-2)">Look for: ${esc(b.style.look)}</div>
+              ${b.forNights && b.forNights.length ? `<div class="tiny dim truncate">For: ${esc(b.forNights.slice(0, 2).join(', '))}</div>` : ''}
+              ${b.alternatives && b.alternatives.length ? `<div class="row" style="gap:5px;flex-wrap:wrap;margin-top:5px">
+                <span class="tiny dim">Swap for:</span>
+                ${b.alternatives.map((a) => `<button class="chip sm" data-swap="${esc(b.style.id)}:${esc(a.id)}">${esc(a.name)}</button>`).join('')}
+              </div>` : ''}
             </div></div>`).join('')}
         </div>
       </div>
@@ -288,8 +318,23 @@ export function openWine(weekKey) {
         store.setSetting('wineBottles', bottles);
         rerender();
       });
+      on(root, 'click', '[data-swap]', (e, t) => {
+        const [from, to] = t.dataset.swap.split(':');
+        swaps.set(from, to);
+        rerender();
+      });
+      on(root, 'click', '[data-more]', (e, t) => {
+        const id = t.dataset.more;
+        nudges.set(id, (nudges.get(id) || 0) + 1);
+        rerender();
+      });
+      on(root, 'click', '[data-less]', (e, t) => {
+        const id = t.dataset.less;
+        nudges.set(id, (nudges.get(id) || 0) - 1);
+        rerender();
+      });
       on(root, 'click', '[data-a="tolist"]', async () => {
-        const wp = planWine(entries, { bottles, targetPerBottle: target });
+        const wp = applyEdits(planWine(entries, { bottles, targetPerBottle: target }));
         for (const it of wineListItems(wp, store.settings.wineStore)) store.putShoppingItem(it);
         // Anything marked "Every order" rides along without being asked for.
         const standing = store.alwaysWines();
@@ -302,7 +347,7 @@ export function openWine(weekKey) {
         window.__recimeNav.go('shop', { top: true });
       });
       on(root, 'click', '[data-a="handoff"]', () => {
-        const wp = planWine(entries, { bottles, targetPerBottle: target });
+        const wp = applyEdits(planWine(entries, { bottles, targetPerBottle: target }));
         const payload = wineHandoffPayload(wp, store.settings);
         const text = [
           'Find me wine for this week.',
