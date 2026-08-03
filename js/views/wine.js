@@ -121,7 +121,11 @@ export default function renderWine() {
   </div>`));
 
   // --- filters ---------------------------------------------------------------
-  root.appendChild(el(`<div class="pad-x" style="margin-top:10px">
+  // NOTE: one wrapper element. el() returns only the first node it's handed,
+  // so a block of siblings loses everything after the first — which is exactly
+  // how the filter chips managed to never appear.
+  root.appendChild(el(`<div>
+  <div class="pad-x" style="margin-top:10px">
     <div class="search"><span>🔍</span>
       <input id="wq" placeholder="Search producer, grape, region" value="${esc(filters.q)}" autocomplete="off"></div>
   </div>
@@ -137,6 +141,7 @@ export default function renderWine() {
   <div class="chips" style="margin-top:6px">
     ${BODY_BANDS.map((b) => `<button class="chip sm ${filters.body === b.id ? 'on' : ''}" data-f="body:${b.id}">${esc(b.label)} bodied</button>`).join('')}
     ${ABV_BANDS.map((b) => `<button class="chip sm ${filters.abv === b.id ? 'on' : ''}" data-f="abv:${b.id}">${esc(b.label)}</button>`).join('')}
+  </div>
   </div>`));
 
   // --- the cellar ------------------------------------------------------------
