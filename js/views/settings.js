@@ -163,6 +163,12 @@ export default function renderSettings() {
         <div class="field grow"><label>Weeknight limit (min)</label>
           <input class="input" type="number" min="10" max="180" step="5" data-set-num="weeknightMaxMinutes" value="${s.weeknightMaxMinutes || 40}"></div>
       </div>
+      <div class="field"><label>Nights we cook</label>
+        <div class="chips wrap" style="padding:0">
+          ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => `<button class="chip sm ${(s.cookDays || []).includes(i) ? 'on' : ''}" data-cookday="${i}">${d}</button>`).join('')}
+        </div>
+        <div class="tiny dim">Turn a day off and the planner stops filling it — for the takeaway night you have every week. One-off changes still live on the Plan tab under “Skip days we’re out”.</div></div>
+
       <div class="field"><label>Meals to plan each day</label>
         <div class="chips wrap" style="padding:0">
           ${['breakfast', 'lunch', 'dinner'].map((m) => `<button class="chip ${(s.planMeals || []).includes(m) ? 'on' : ''}" data-meal="${m}">${m}</button>`).join('')}
@@ -352,6 +358,17 @@ function wire(root) {
       for (const k of await caches.keys()) await caches.delete(k);
     } catch (e) { /* reload regardless */ }
     setTimeout(() => location.reload(), 400);
+  });
+
+  on(root, 'click', '[data-cookday]', (e, t) => {
+    const d = Number(t.dataset.cookday);
+    const cur = Array.isArray(s.cookDays) ? s.cookDays.slice() : [0, 1, 2, 3, 4, 5, 6];
+    const i = cur.indexOf(d);
+    if (i >= 0) cur.splice(i, 1); else cur.push(d);
+    cur.sort((a, b) => a - b);
+    if (!cur.length) { toast('Keep at least one night', 'err'); return; }
+    store.setSetting('cookDays', cur);
+    nav.render();
   });
 
   on(root, 'click', '[data-a="setloc"]', () => {

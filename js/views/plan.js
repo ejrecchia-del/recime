@@ -159,13 +159,14 @@ function wire(root, weekKey, plan) {
       dietPrefs: store.settings.dietPrefs || [],
       lockedSlots: plan ? plan.slots.filter((s) => s.locked || s.skipped) : [],
       recentIds: recentPlanned(weekKey),
+      cookDays: store.settings.cookDays,
     });
     store.savePlan(p);
     toast('Here\'s a week — swap anything you like');
   });
 
   on(root, 'click', '[data-a="blank"]', () => {
-    const p = generatePlan([], { weekStart: weekKey, days: store.settings.planDays || 7, meals: store.settings.planMeals || ['dinner'], servings: store.householdServings() });
+    const p = generatePlan([], { weekStart: weekKey, days: store.settings.planDays || 7, meals: store.settings.planMeals || ['dinner'], servings: store.householdServings(), cookDays: store.settings.cookDays });
     store.savePlan(p);
   });
 
@@ -529,7 +530,7 @@ export function addRecipeToPlan(recipe, servings) {
   const weekKey = ymd(weekStartOf(new Date()));
   let plan = store.plan(weekKey);
   if (!plan) {
-    plan = generatePlan([], { weekStart: weekKey, days: 7, meals: store.settings.planMeals || ['dinner'], servings: servings || store.householdServings() });
+    plan = generatePlan([], { weekStart: weekKey, days: 7, meals: store.settings.planMeals || ['dinner'], servings: servings || store.householdServings(), cookDays: store.settings.cookDays });
     store.savePlan(plan);
   }
   const body = `<div class="pad stack">
