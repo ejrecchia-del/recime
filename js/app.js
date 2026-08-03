@@ -11,6 +11,7 @@ import renderPlan from './views/plan.js';
 import renderShop from './views/shop.js';
 import renderChat from './views/chat.js';
 import renderSettings from './views/settings.js';
+import renderWine from './views/wine.js';
 import { openImportSheet } from './views/import.js';
 
 const TABS = [
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'chat', label: 'Ask', icon: '💬' },
   { id: 'plan', label: 'Plan', icon: '🗓️' },
   { id: 'shop', label: 'Shopping', icon: '🛒' },
+  { id: 'wine', label: 'Wine', icon: '🍷' },
   { id: 'settings', label: 'More', icon: '⚙️' },
 ];
 
@@ -84,6 +86,7 @@ export function render() {
     case 'chat': node = renderChat(); break;
     case 'plan': node = renderPlan(); break;
     case 'shop': node = renderShop(); break;
+    case 'wine': node = renderWine(); break;
     case 'settings': node = renderSettings(); break;
     default: node = renderRecipes();
   }

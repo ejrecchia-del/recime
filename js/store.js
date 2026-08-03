@@ -119,6 +119,18 @@ export const DEFAULT_STORE_RULES = [
 ];
 
 // What people said about a meal after eating it.
+// How often a bottle should turn up. Deliberately the same shape as the
+// recipe frequencies — "every order" is the wine version of "eat every week".
+export const WINE_FREQUENCIES = [
+  { id: 'always', label: 'Every order', emoji: '\ud83d\udd01', color: '#2f9e6b' },
+  { id: 'often', label: 'Often', emoji: '\ud83d\udc4d', color: '#3b7dd8' },
+  { id: 'sometimes', label: 'Now and then', emoji: '\ud83c\udf19', color: '#8a6bcf' },
+  { id: 'special', label: 'Special occasion', emoji: '\u2728', color: '#cf8a3b' },
+  { id: 'never', label: 'Never again', emoji: '\ud83d\udeab', color: '#b04a4a' },
+];
+
+export function wineFrequency(id) { return WINE_FREQUENCIES.find((f) => f.id === id); }
+
 export const VERDICTS = [
   { id: 'loved', label: 'Loved it', emoji: '\ud83d\ude0d', score: 2 },
   { id: 'ate', label: 'Ate it', emoji: '\ud83d\udc4d', score: 1 },
@@ -225,6 +237,7 @@ function blankState() {
     pantry: {},      // key -> {key, name, addedAt}
     chat: [],        // chat transcript
     nudges: {},      // id -> { recipeId, from, to, note, at, seen }
+    wines: {},       // id -> a bottle we've actually bought or want to
     meta: { seeded: false, createdAt: nowISO() },
   };
 }
@@ -561,6 +574,101 @@ class Store {
     this.save(); this.emit('shopping:clear'); schedulePush(this);
   }
 
+  // --- wine ----------------------------------------------------------------
+  wines() {
+    return Object.values(this.state.wines || {}).filter((w) => !w.deleted);
+  }
+
+  wine(id) { return (this.state.wines || {})[id]; }
+
+  addWine(w) {
+    this.state.wines = this.state.wines || {};
+    const wine = Object.assign({
+      id: uid('wine'),
+      name: 'Untitled wine',
+      producer: '',
+      styleId: '',            // maps to a style in wine.js
+      colour: 'red',
+      grape: '',
+      region: '',
+      country: '',
+      vintage: '',
+      abv: '',
+      price: null,            // what we paid, or the shelf price we saw
+      salePrice: null,
+      size: '750ml',
+      score: '',              // critic score as printed, e.g. "91 JS"
+      notes: '',              // how it tastes, in our words
+      pairsWith: [],          // recipe ids or free text
+      store: '',
+      url: '',
+      rating: 0,
+      favorite: false,
+      frequency: '',          // see WINE_FREQUENCIES — 'always' rides every order
+      timesBought: 0,
+      lastBoughtAt: '',
+      addedBy: this.settings?.displayName || '',
+      createdAt: nowISO(),
+      updatedAt: nowISO(),
+      deleted: false,
+    }, w);
+    this.state.wines[wine.id] = wine;
+    this.commit('wine', wine.id, 'wine:add');
+    return wine;
+  }
+
+  updateWine(id, patch) {
+    const w = this.state.wines[id];
+    if (!w) return;
+    Object.assign(w, patch, { updatedAt: nowISO() });
+    this.commit('wine', id, 'wine:update');
+    return w;
+  }
+
+  removeWine(id) {
+    const w = this.state.wines[id];
+    if (!w) return;
+    w.deleted = true; w.updatedAt = nowISO();
+    this.commit('wine', id, 'wine:remove');
+  }
+
+  setWineRating(id, n) { return this.updateWine(id, { rating: Number(n) || 0 }); }
+  toggleWineFavorite(id) {
+    const w = this.wine(id);
+    return w ? this.updateWine(id, { favorite: !w.favorite }) : null;
+  }
+  setWineFrequency(id, f) {
+    const w = this.wine(id);
+    return w ? this.updateWine(id, { frequency: w.frequency === f ? '' : f }) : null;
+  }
+  markWineBought(id) {
+    const w = this.wine(id);
+    if (!w) return;
+    return this.updateWine(id, { timesBought: (w.timesBought || 0) + 1, lastBoughtAt: nowISO() });
+  }
+
+  /** The standing order — bottles that go in every time, no thinking required. */
+  alwaysWines() {
+    return this.wines().filter((w) => w.frequency === 'always');
+  }
+
+  /**
+   * What the cellar says about your taste: which styles you rate well. Used to
+   * tilt the week's suggestions toward what you actually drink.
+   */
+  wineAffinity() {
+    const by = new Map();
+    for (const w of this.wines()) {
+      if (!w.styleId || !w.rating) continue;
+      const cur = by.get(w.styleId) || { total: 0, n: 0 };
+      cur.total += w.rating; cur.n++;
+      by.set(w.styleId, cur);
+    }
+    const out = {};
+    for (const [id, v] of by) out[id] = v.total / v.n;
+    return out;
+  }
+
   // --- pantry --------------------------------------------------------------
   pantryList() { return Object.values(this.state.pantry).filter((p) => !p.deleted); }
 
@@ -895,8 +1003,8 @@ class Store {
 // One table, one row per record, last-write-wins on updated_at.
 // ---------------------------------------------------------------------------
 
-const KIND_TO_SLICE = { recipe: 'recipes', plan: 'plans', shop: 'shopping', pantry: 'pantry', nudge: 'nudges' };
-const SLICE_TO_KIND = { recipes: 'recipe', plans: 'plan', shopping: 'shop', pantry: 'pantry', nudges: 'nudge' };
+const KIND_TO_SLICE = { recipe: 'recipes', plan: 'plans', shop: 'shopping', pantry: 'pantry', nudge: 'nudges', wine: 'wines' };
+const SLICE_TO_KIND = { recipes: 'recipe', plans: 'plan', shopping: 'shop', pantry: 'pantry', nudges: 'nudge', wines: 'wine' };
 
 let pushTimer = null;
 function schedulePush(store) {
