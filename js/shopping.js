@@ -417,6 +417,36 @@ export function instacartStorefrontUrl(storeSlug) {
   return `https://www.instacart.com/store/${encodeURIComponent(storeSlug || '')}/storefront`;
 }
 
+/**
+ * Instacart only accepts units from a fixed list. Ours is longer — a recipe
+ * says "3 cloves garlic" and "2 sprigs thyme", neither of which Instacart has
+ * a word for. Anything it doesn't recognise becomes "each", which is what you
+ * are really buying anyway. Sending an unknown unit gets the whole line item
+ * rejected, so this map is doing real work, not tidying.
+ */
+const IC_UNITS = {
+  tsp: 'teaspoon', tbsp: 'tablespoon', cup: 'cup',
+  ml: 'ml', l: 'l', floz: 'fl oz ounce',
+  pint: 'pint', quart: 'quart', gallon: 'gallon',
+  g: 'gram', kg: 'kilogram', oz: 'ounce', lb: 'pound',
+  can: 'can', bunch: 'bunch', head: 'head', ear: 'ears',
+  package: 'package', bag: 'package', box: 'package', packet: 'packet',
+};
+
+export function instacartUnit(u) {
+  return IC_UNITS[normUnit(u)] || 'each';
+}
+
+function icMeasurement(quantity, unit) {
+  const unitName = instacartUnit(unit);
+  // "each" means whole objects — half a lemon isn't a thing you can add to a
+  // cart, so round up rather than sending 0.5 and getting one anyway.
+  const q = unitName === 'each'
+    ? Math.max(1, Math.ceil(Number(quantity) || 1))
+    : Math.max(0.01, Math.round((Number(quantity) || 1) * 100) / 100);
+  return { quantity: q, unit: unitName };
+}
+
 /** Payload for the official Instacart "create shopping list page" endpoint. */
 export function instacartListPayload(items, title, linkbackUrl) {
   return {
@@ -426,7 +456,11 @@ export function instacartListPayload(items, title, linkbackUrl) {
     line_items: items.map((it) => ({
       name: stripToProduct(it.name),
       display_text: `${fmtAmount(it.quantity, it.unit)} ${it.name}`.trim(),
-      line_item_measurements: [{ quantity: Math.max(1, Math.round((it.quantity || 1) * 100) / 100), unit: normUnit(it.unit) || 'each' }],
+      // What you buy, not what the recipe calls for — "12 cloves" is 2 heads.
+      line_item_measurements: [icMeasurement(
+        it.buyQty != null ? it.buyQty : it.quantity,
+        it.buyUnit || it.unit,
+      )],
       filters: {},
     })),
     landing_page_configuration: {
@@ -434,6 +468,71 @@ export function instacartListPayload(items, title, linkbackUrl) {
       enable_pantry_items: true,
     },
   };
+}
+
+/**
+ * Payload for the "create recipe page" endpoint — one recipe, its method, and
+ * every ingredient, as a page you can shop in a tap.
+ *
+ * `enable_pantry_items` is on so salt and olive oil show up as things you can
+ * untick rather than things you have to buy again.
+ */
+export function instacartRecipePayload(recipe, linkbackUrl) {
+  const mins = (Number(recipe.prepMinutes) || 0) + (Number(recipe.cookMinutes) || 0);
+  const payload = {
+    title: recipe.title,
+    link_type: 'recipe',
+    expires_in: 365,
+    servings: Number(recipe.servings) || undefined,
+    cooking_time: mins || undefined,
+    external_reference_id: recipe.id,
+    instructions: (recipe.steps || []).map((s) => String(s)).filter(Boolean),
+    ingredients: (recipe.ingredients || [])
+      .filter((ing) => ing.item && !isNotShopped(ing.item))
+      .map((ing) => ({
+        name: stripToProduct(ing.item),
+        display_text: `${fmtAmount(ing.quantity, ing.unit)} ${ing.item}${ing.notes ? ', ' + ing.notes : ''}`.trim(),
+        measurements: [icMeasurement(ing.quantity, ing.unit)],
+      })),
+    landing_page_configuration: {
+      partner_linkback_url: linkbackUrl || location.origin,
+      enable_pantry_items: true,
+    },
+  };
+  // A photo makes the page look like a recipe rather than a receipt, but
+  // Instacart wants a real URL — our own imports can be inline base64 data.
+  if (recipe.image && /^https?:\/\//.test(recipe.image)) payload.image_url = recipe.image;
+  if (recipe.sourceInspiration) payload.author = recipe.sourceInspiration;
+  return payload;
+}
+
+/**
+ * Is one-tap Instacart building switched on? The API key itself lives as a
+ * secret on your own backend function and never touches the phone, so this is
+ * just the household saying "yes, that's set up". `instacartKey` is the older
+ * field some devices still have — treat it as a yes.
+ */
+export function instacartReady() {
+  const s = store.settings;
+  return !!(s.syncUrl && (s.instacartEnabled || s.instacartKey));
+}
+
+/** POST to your own `instacart-list` function, which holds the API key. */
+export async function callInstacart(action, extra = {}) {
+  const base = String(store.settings.syncUrl || '').replace(/\/+$/, '');
+  if (!base) throw new Error('Set up the backend in Settings first');
+  const res = await fetch(base + '/functions/v1/instacart-list', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + store.settings.syncKey,
+      apikey: store.settings.syncKey,
+    },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Instacart request failed (${res.status})`);
+  return body;
 }
 
 function stripToProduct(name) {

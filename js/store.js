@@ -196,6 +196,10 @@ const DEFAULT_SETTINGS = {
   ],
   defaultStore: 'shoprite',
   defaultDest: 'in-person',
+  // The Instacart API key lives as a secret on your own backend function, not
+  // here — this is only the household saying the plumbing is in place.
+  // `instacartKey` is the older field; devices that have one keep working.
+  instacartEnabled: false,
   instacartKey: '',
   aiKey: '',
   planDays: 7,
