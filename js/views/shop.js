@@ -8,6 +8,7 @@ import {
   aggregateIngredients, groupByAisle, totals, estimateCost, applyPricing,
   priceLookup, buyAmount, needAmount, destLabel, listAsText,
   instacartSearchUrl, instacartStorefrontUrl, instacartListPayload,
+  instacartReady, callInstacart,
   claudeHandoffPayload, normaliseAisle, applyStoreRules, PRICE_META,
 } from '../shopping.js';
 import { guessCategory } from '../parse.js';
@@ -334,7 +335,7 @@ function openInstacart(items) {
   const forCart = items.filter((i) => !i.have && (i.dest === 'instacart' || !i.dest));
   const explicit = items.filter((i) => !i.have && i.dest === 'instacart');
   const list = explicit.length ? explicit : forCart;
-  const hasKey = !!store.settings.instacartKey;
+  const hasKey = instacartReady();
 
   const body = `<div class="pad stack">
     <div class="small muted">${explicit.length
@@ -344,7 +345,7 @@ function openInstacart(items) {
     ${hasKey
       ? `<button class="btn primary block" data-a="api">🚚 Build an Instacart list page</button>
          <div class="tiny dim">Uses your Instacart API key to create one shoppable page with everything on it.</div>`
-      : `<div class="banner warn" style="margin:0">Instacart's official API is closed to new sign-ups right now, so one-tap cart building isn't available. The options below still work well.</div>`}
+      : `<div class="banner" style="margin:0">One-tap cart building is off. Instacart's developer sign-ups are open again — make a key at dashboard.instacart.com, put it on your backend, and switch it on under Settings → Keys and backends. The options below work either way.</div>`}
 
     <button class="btn block" data-a="storefront">Open Instacart · ${esc((stores.find((s) => s.id === store.settings.defaultStore) || stores[0] || {}).name || 'store')}</button>
     <button class="btn block" data-a="searchall">🔎 Open a search tab per item (${list.length})</button>
@@ -413,17 +414,15 @@ function openSearchRunner(list, stores) {
 }
 
 async function instacartApiList(list) {
-  const base = String(store.settings.syncUrl || '').replace(/\/+$/, '');
-  if (!base) { toast('Set up the backend in Settings first', 'err'); return; }
   toast('Building your Instacart page…');
   try {
-    const res = await fetch(base + '/functions/v1/instacart-list', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + store.settings.syncKey, apikey: store.settings.syncKey },
-      body: JSON.stringify(instacartListPayload(list, 'ReciMe — this week', location.origin)),
+    const stores = store.settings.stores || [];
+    const pick = stores.find((s) => s.id === store.settings.defaultStore) || stores[0];
+    const body = await callInstacart('list', {
+      payload: instacartListPayload(list, 'ReciMe — this week', location.origin),
+      retailerKey: pick?.retailerKey || undefined,
     });
-    const body = await res.json();
-    if (!res.ok || !body.products_link_url) throw new Error(body.error || 'Instacart rejected the request');
+    if (!body.products_link_url) throw new Error('Instacart did not return a link');
     window.open(body.products_link_url, '_blank', 'noopener');
   } catch (e) {
     toast(String(e.message || e), 'err');

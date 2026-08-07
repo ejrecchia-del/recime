@@ -8,6 +8,7 @@ import { healthify, countPossibleSwaps } from '../healthify.js';
 import { similarTo } from '../suggest.js';
 import { openCookMode } from './cook.js';
 import { addRecipeToList } from './shop.js';
+import { instacartReady, callInstacart, instacartRecipePayload } from '../shopping.js';
 import { addRecipeToPlan } from './plan.js';
 import { openEditSheet } from './import.js';
 import { hostOf } from '../parse.js';
@@ -151,6 +152,7 @@ export default function renderDetail(r) {
       <button class="btn grow sm" data-a="tolist">🛒 Add to shopping list</button>
       <button class="btn grow sm" data-a="toplan">🗓️ Add to a day</button>
     </div>
+    ${instacartReady() ? `<button class="btn block sm ghost" style="margin-top:9px" data-a="icrecipe">🚚 Shop these ingredients on Instacart</button>` : ''}
   </div>`);
   root.appendChild(ing);
 
@@ -202,6 +204,30 @@ export default function renderDetail(r) {
   on(root, 'click', '[data-a="cook"]', () => openCookMode(r, scale));
   on(root, 'click', '[data-a="tolist"]', () => addRecipeToList(r, scale));
   on(root, 'click', '[data-a="toplan"]', () => addRecipeToPlan(r, scale));
+  on(root, 'click', '[data-a="icrecipe"]', async () => {
+    toast('Building the Instacart page…');
+    try {
+      // Send it at the servings currently on screen, not the recipe's default.
+      const scaled = scale === (r.servings || 4) ? r : {
+        ...r,
+        servings: scale,
+        ingredients: (r.ingredients || []).map((i) => ({
+          ...i,
+          quantity: (Number(i.quantity) || 0) * (scale / (r.servings || 4)),
+        })),
+      };
+      const stores = store.settings.stores || [];
+      const pick = stores.find((s) => s.id === store.settings.defaultStore) || stores[0];
+      const body = await callInstacart('recipe', {
+        payload: instacartRecipePayload(scaled, location.origin),
+        retailerKey: pick?.retailerKey || undefined,
+      });
+      if (!body.products_link_url) throw new Error('Instacart did not return a link');
+      window.open(body.products_link_url, '_blank', 'noopener');
+    } catch (e) {
+      toast(String(e.message || e), 'err');
+    }
+  });
   on(root, 'click', '[data-a="healthify"]', () => doHealthify(r));
   on(root, 'click', '[data-a="more"]', () => openMore(r));
   on(root, 'click', '[data-a="photo"]', () => pickPhoto(r));

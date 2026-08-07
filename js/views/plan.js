@@ -6,6 +6,7 @@ import { el, on, artHtml, artStyle, toast, sheet, confirmSheet, emptyState, copy
 import { esc, ymd, weekStartOf, addDays, parseYmd, prettyDate, DAY_SHORT, fmtMinutes, totalMinutes, recipeArt } from '../util.js';
 import { generatePlan, reroll, planSummary, slotDateLabel, skipSlot, unskipSlot, skipDay, unskipDay, SKIP_REASONS, skipReasonOf } from '../planner.js';
 import { buildListFromPlan } from './shop.js';
+import { aggregateIngredients, totals, PRICE_META } from '../shopping.js';
 import { planWine, wineListItems, wineHandoffPayload, caseMath, CASE_TIERS, STYLES, bodyWord } from '../wine.js';
 
 let viewWeek = null;
@@ -88,15 +89,34 @@ export default function renderPlan() {
   }
   root.appendChild(wrap);
 
+  // --- what the week will cost ---------------------------------------------
+  // Runs the exact aggregation the shopping list uses, without saving anything,
+  // so this number and the one on the Shopping tab can never drift apart.
+  let cost = null;
+  if (sum.filled && store.settings.showPrices !== false) {
+    const priced = plan.slots
+      .filter((s) => s.recipeId && !s.skipped)
+      .map((s) => ({ recipe: store.recipe(s.recipeId), servings: s.servings }))
+      .filter((e) => e.recipe);
+    if (priced.length) {
+      const t = totals(aggregateIngredients(priced));
+      const portions = priced.reduce((n, e) => n + (Number(e.servings) || e.recipe.servings || 4), 0);
+      cost = { total: t.buying, perServing: portions ? t.buying / portions : 0, unpriced: t.unpriced };
+    }
+  }
+
   // --- summary -------------------------------------------------------------
   if (sum.filled) {
     root.appendChild(el(`<div class="pad">
       <div class="card pad">
         <div class="kv"><span class="k">Meals planned</span><span class="v">${sum.filled} of ${sum.cookable}</span></div>
         ${sum.skipped ? `<div class="kv"><span class="k">Skipped</span><span class="v">${sum.skipped} (out / away)</span></div>` : ''}
+        ${cost ? `<div class="kv"><span class="k">Groceries, estimated</span><span class="v">$${cost.total.toFixed(0)}</span></div>` : ''}
+        ${cost && cost.perServing ? `<div class="kv"><span class="k">Cost per serving</span><span class="v">$${cost.perServing.toFixed(2)}</span></div>` : ''}
         ${sum.avgCalories ? `<div class="kv"><span class="k">Average per serving</span><span class="v">${sum.avgCalories} cal</span></div>` : ''}
         ${sum.avgMinutes ? `<div class="kv"><span class="k">Average cook time</span><span class="v">${fmtMinutes(sum.avgMinutes)}</span></div>` : ''}
         <div class="kv"><span class="k">Variety</span><span class="v">${sum.cuisines.length} cuisines</span></div>
+        ${cost ? `<div class="tiny dim" style="margin-top:8px">Full basket at ${esc(PRICE_META.region)} shelf prices, before anything you already have and before sale prices${cost.unpriced ? `. ${cost.unpriced} item${cost.unpriced === 1 ? '' : 's'} had no price to go on` : ''}.</div>` : ''}
       </div>
     </div>`));
   }

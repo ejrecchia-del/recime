@@ -4,7 +4,7 @@
 import store, { startSync, pullRemote, pushDirty, pushToCircles, pullFromCircles, EATING_TYPES, eatingType, appetiteShare, ageOf, daysToBirthday, AISLE_ORDER } from '../store.js';
 import { el, on, toast, sheet, confirmSheet, copyText, downloadFile, $ } from '../ui.js';
 import { esc, uid } from '../util.js';
-import { PRICE_META } from '../shopping.js';
+import { PRICE_META, instacartReady, callInstacart } from '../shopping.js';
 
 const DIETS = [
   ['vegetarian', 'Vegetarian'], ['vegan', 'Vegan'], ['gluten-free', 'Gluten-free'],
@@ -92,7 +92,8 @@ export default function renderSettings() {
           <div class="tiny dim">Instacart: ${esc(st.slug || 'not set')}${s.defaultStore === st.id ? ' · default' : ''}</div></div>
         <button class="btn xs ghost" data-editstore="${esc(st.id)}">Edit</button>
       </div>`).join('')}
-      <div class="lrow"><button class="btn sm ghost" data-a="addstore">＋ Add a store</button></div>
+      <div class="lrow"><button class="btn sm ghost" data-a="addstore">＋ Add a store</button>
+        <button class="btn sm ghost" data-a="findstores">📍 Find stores near ${esc(loc.postcode || 'me')}</button></div>
     </div>
     <div class="pad-x" style="margin-top:9px">
       <div class="field"><label>Default for new list items</label>
@@ -207,8 +208,8 @@ export default function renderSettings() {
     <div class="card">
       <div class="lrow" data-a="aikey"><div class="grow"><div>AI recipe reading &amp; chat</div>
         <div class="tiny dim">${s.aiKey ? 'Key saved' : 'Off — video imports and chat use the built-in parser'}</div></div><span class="dim">›</span></div>
-      <div class="lrow" data-a="ickey"><div class="grow"><div>Instacart API key</div>
-        <div class="tiny dim">${s.instacartKey ? 'Key saved' : 'Not set — Instacart is closed to new sign-ups'}</div></div><span class="dim">›</span></div>
+      <div class="lrow" data-a="ickey"><div class="grow"><div>Instacart cart building</div>
+        <div class="tiny dim">${(s.instacartEnabled || s.instacartKey) ? 'On — lists and recipes can go straight to a cart' : 'Off — tap for the four-step setup'}</div></div><span class="dim">›</span></div>
     </div>`));
 
   // --- data ----------------------------------------------------------------
@@ -329,8 +330,8 @@ function wire(root) {
   on(root, 'click', '[data-editstore]', (e, t) => openStore(t.dataset.editstore));
   on(root, 'click', '[data-a="aikey"]', () => openKey('aiKey', 'AI key',
     'Paste an Anthropic API key. It is stored on this device and used by your own backend function — it never goes anywhere else. This turns on video-caption recipe reading and smarter chat answers.'));
-  on(root, 'click', '[data-a="ickey"]', () => openKey('instacartKey', 'Instacart API key',
-    'Instacart closed new developer sign-ups, so most people will not have one of these. If you get access later, paste the key here for one-tap cart building.'));
+  on(root, 'click', '[data-a="ickey"]', () => openInstacartSetup());
+  on(root, 'click', '[data-a="findstores"]', () => findNearbyStores());
 
   // Which copy of the app is this? The single most useful thing to know when a
   // feature is on one device and not another — usually two different URLs.
@@ -796,6 +797,104 @@ function openStore(id) {
       on(root, 'click', '[data-a="del"]', () => {
         store.setSetting('stores', stores.filter((x) => x.id !== id));
         close(); window.__recimeNav.render();
+      });
+    },
+  });
+}
+
+/**
+ * Instacart setup. The API key deliberately does NOT live here — it goes in as
+ * a secret on your own backend function, so it never sits in a phone's local
+ * storage and never travels in a request anyone but you can see. This switch
+ * only tells the app the plumbing is in place.
+ */
+function openInstacartSetup() {
+  const s = store.settings;
+  const isOn = !!(s.instacartEnabled || s.instacartKey);
+  sheet('Instacart cart building', `<div class="pad stack">
+    <p class="small muted" style="margin:0">Turns your shopping list, and any single recipe, into one shoppable Instacart page. Four steps, once.</p>
+    <ol class="small muted" style="margin:0;padding-left:19px;line-height:1.65">
+      <li>Sign up at <b>dashboard.instacart.com</b> and create an API key. Choose <b>Production</b> — development keys only build sandbox pages.</li>
+      <li>In Supabase, deploy the function <b>instacart-list</b> from <code>supabase/instacart-list.ts</code>.</li>
+      <li>On that function, add the secret <b>INSTACART_API_KEY</b> and paste the key there. Not here.</li>
+      <li>Come back and switch this on.</li>
+    </ol>
+    <div class="row-between card pad"><span class="grow">Cart building is set up</span>
+      <label class="switch"><input type="checkbox" id="ic-on" ${isOn ? 'checked' : ''}><span class="track"></span><span class="knob"></span></label></div>
+    <button class="btn block" data-a="test">Test the connection</button>
+    <div class="tiny dim" id="ic-test">Looks up stores near ${esc((s.location || {}).postcode || 'your postcode')} — the cheapest call there is.</div>
+    ${s.instacartKey ? '<button class="btn block ghost small" data-a="forget">Forget the old key stored on this device</button>' : ''}
+  </div>`, {
+    onMount(root, close) {
+      on(root, 'change', '#ic-on', (e, t) => store.setSetting('instacartEnabled', t.checked));
+      on(root, 'click', '[data-a="forget"]', () => { store.setSetting('instacartKey', ''); toast('Removed from this device', 'ok'); });
+      on(root, 'click', '[data-a="test"]', async () => {
+        const out = $('#ic-test', root);
+        out.textContent = 'Asking Instacart…';
+        try {
+          const { retailers } = await callInstacart('retailers', {
+            postalCode: (store.settings.location || {}).postcode || '07945',
+            countryCode: (store.settings.location || {}).country || 'US',
+          });
+          out.textContent = retailers?.length
+            ? `Working — ${retailers.length} stores deliver to you.`
+            : 'Connected, but Instacart listed no stores for that postcode.';
+        } catch (e) {
+          out.textContent = String(e.message || e);
+        }
+      });
+      on(root, 'click', '[data-a="done"]', close);
+    },
+  });
+}
+
+/**
+ * Ask Instacart which stores actually deliver to this postcode, and offer them
+ * as stores to add. This is also the honest answer to "how would this work for
+ * someone else in another town" — they set their postcode and get their own.
+ */
+async function findNearbyStores() {
+  const loc = store.settings.location || {};
+  const postcode = loc.postcode || '';
+  if (!postcode) { toast('Set your postcode up top first', 'err'); return; }
+  if (!instacartReady()) { toast('Switch on Instacart cart building first', 'err'); return; }
+
+  toast('Looking up stores…');
+  let retailers = [];
+  try {
+    const out = await callInstacart('retailers', { postalCode: postcode, countryCode: loc.country || 'US' });
+    retailers = out.retailers || [];
+  } catch (e) { toast(String(e.message || e), 'err'); return; }
+  if (!retailers.length) { toast('Instacart listed no stores for that postcode', 'err'); return; }
+
+  const have = new Set((store.settings.stores || []).map((x) => (x.slug || '').toLowerCase()));
+  sheet(`Stores near ${postcode}`, `<div class="pad stack">
+    <p class="small muted" style="margin:0">${retailers.length} deliver here. Tick the ones you actually use.</p>
+    <div class="card">
+      ${retailers.map((r, i) => `<label class="lrow" style="cursor:pointer">
+        <div class="thumb" style="background:var(--bg-3);font-size:17px">🏪</div>
+        <div class="grow"><div style="font-weight:600">${esc(r.name || r.retailer_key)}</div>
+          <div class="tiny dim">${esc(r.retailer_key || '')}${have.has(String(r.retailer_key).toLowerCase()) ? ' · already added' : ''}</div></div>
+        <input type="checkbox" data-i="${i}" ${have.has(String(r.retailer_key).toLowerCase()) ? 'disabled' : ''}>
+      </label>`).join('')}
+    </div>
+    <button class="btn primary block" data-a="add">Add the ticked stores</button>
+  </div>`, {
+    onMount(root, close) {
+      on(root, 'click', '[data-a="add"]', () => {
+        const picks = Array.from(root.querySelectorAll('input[type=checkbox]:checked'))
+          .map((c) => retailers[Number(c.dataset.i)])
+          .filter(Boolean);
+        if (!picks.length) { close(); return; }
+        const list = [...(store.settings.stores || []), ...picks.map((r) => ({
+          id: uid('st'),
+          name: r.name || r.retailer_key,
+          slug: r.retailer_key || '',
+          retailerKey: r.retailer_key || '',
+        }))];
+        store.setSetting('stores', list);
+        close(); window.__recimeNav.render();
+        toast(`Added ${picks.length} store${picks.length === 1 ? '' : 's'}`, 'ok');
       });
     },
   });
