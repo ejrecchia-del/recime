@@ -4,13 +4,20 @@
 
 **177 recipes, all with photos.**
 
-**https://gleeful-dango-7c143e.netlify.app**
+**https://ejrecchia-del.github.io/recime/**
 
-Deployed to your Netlify account, public, and working. Skip to Step 2.
+Hosted on GitHub Pages from **github.com/ejrecchia-del/recime**, public, and
+working. Skip to Step 2.
 
 Everything here is a plain folder of files — nothing to compile, no
-dependencies. To push an update later, drag the folder onto the same site's
-**Deploys** tab in Netlify.
+dependencies. Updates go straight into that repo and are live about a minute
+later. GitHub Pages has no deploy limit and no card on file, which is why we
+moved off Netlify: its free plan allows 20 deploys a month and we ran through
+them in one afternoon.
+
+**If you already added the old Netlify address to a phone, remove it and add
+this one instead** — a browser keeps its data per web address, so the new one
+starts fresh and needs the three sync values entered again (Step 3).
 
 ---
 
@@ -402,33 +409,60 @@ it; it just uses the built-in matcher.
 ---
 ## About Instacart
 
-I looked into wiring this up properly. Instacart has an official API that
-builds a whole cart from a list in one tap — but **they've closed new developer
-applications**, with no waitlist. Their page currently reads: *"We are
-currently not accepting new applications."*
+**Sign-ups reopened.** Instacart's Developer Platform now hands out API keys
+self-serve, so the one-tap path is live. Four steps, once:
 
-So the app ships with three things that work today:
+1. **Get a key.** Sign in at `dashboard.instacart.com` → **API Keys** →
+   **Create New API Key**. Pick **Production** — a Development key only builds
+   sandbox pages that can't be shopped. Copy it immediately; the dashboard
+   won't show it in full again.
+2. **Deploy the function.** In Supabase → **Edge Functions** → *Deploy a new
+   function* → *Via Editor*, name it exactly `instacart-list`, paste the
+   contents of `supabase/instacart-list.ts`, deploy.
+3. **Add the secret.** On that function, add `INSTACART_API_KEY` and paste the
+   key there. **Not** into the app. The key stays on your backend, so it never
+   sits in a phone's storage and never travels anywhere you can't see.
+   Optional extras: `INSTACART_ENV=dev` to point at the sandbox while you're
+   testing, `INSTACART_RETAILER_KEY` to always land on one store.
+4. **Switch it on.** Settings → *Keys and backends* → **Instacart cart
+   building** → toggle on, then tap **Test the connection**. It asks Instacart
+   which stores deliver to your postcode — the cheapest possible call — and
+   tells you what came back.
 
-- **Open a search per item** — walk the list one item at a time, each opening
-  Instacart search for that product; tap "Added to cart" to advance. Slower
-  than one tap, but it's reliable and needs nothing.
-- **Copy the list** in a format you can paste into Instacart's own
-  "Add items" box.
+### What that turns on
+
+- **Shopping tab → Send to Instacart → Build an Instacart list page.** Your
+  whole week becomes one shoppable page, in the quantities you'd actually buy
+  ("12 cloves garlic" goes over as 2 heads, not 12 cloves). Staples come
+  through as pantry items you can untick rather than re-buy.
+- **Any recipe → Shop these ingredients on Instacart.** One recipe, its method
+  and its whole ingredient list, at whatever servings you have on screen.
+  Scaled to 8 on the detail page, it goes over scaled to 8.
+- **Settings → Stores → Find stores near {postcode}.** Asks Instacart which
+  retailers actually deliver to you and adds the ones you tick, with their
+  real retailer keys. This is also the answer for anyone in a circle who lives
+  somewhere else: they set their own postcode and get their own stores.
+
+Units are translated on the way out. Instacart only accepts a fixed
+vocabulary, and a single unrecognised unit gets a line item rejected — so
+cloves, sprigs, stalks, slices and pinches all go over as "each", which is
+what you're buying anyway.
+
+### The paths that need no key
+
+Still there, still work:
+
+- **Open a search per item** — walk the list one item at a time.
+- **Copy the list** for Instacart's own "Add items" box.
 - **Hand off to Claude** — copies your list with shopping instructions
   (compare stores, lean organic where the premium is reasonable, don't place
-  the order, report back). Paste that into a Claude session with browser
-  access and it builds the cart for you.
-
-The API path is already built (`supabase/instacart-list.ts`) behind a key
-field in Settings. If Instacart reopens applications, deploy that function, add
-the key, and the one-tap button lights up.
+  the order, report back). Paste into a Claude session with browser access.
 
 **On the automated version you asked about** — Claude searching Instacart,
 picking the best store, building the cart and pinging you when it's ready:
-that's a scheduled Claude task rather than an app feature, because it needs a
-logged-in browser. The **Hand off to Claude** button and the **Publish** option
-next to it exist for exactly that. Say the word and I'll set it up as a
-recurring Sunday task.
+that's still a scheduled Claude task rather than an app feature, because it
+needs a logged-in browser. The official API builds the page; it doesn't place
+the order. Say the word and I'll set it up as a recurring Sunday task.
 
 ---
 
